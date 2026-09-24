@@ -1,0 +1,6 @@
+{
+  "name": "Mike Write",
+  "description": "Accessible voice-driven memoir and book-writing companion designed for hands-free, speech-controlled storytelling, chapter organization, AI interviewer prompts, and export.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

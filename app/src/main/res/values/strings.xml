@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Mike Write</string>
+    <string name="accessibility_description">Enables Mike Write hands-free voice loop, switch scan, and audible memoir dictation.</string>
+</resources>
+
