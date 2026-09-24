@@ -46,9 +46,33 @@ class SettingsStore(context: Context) {
         get() = prefs.getBoolean("live_echo_playback", true)
         set(value) = prefs.edit().putBoolean("live_echo_playback", value).apply()
 
+    var consentTimestamp: Long
+        get() = prefs.getLong("consent_timestamp", 0L)
+        set(value) = prefs.edit().putLong("consent_timestamp", value).apply()
+
     var hasConsentedToAudioProcessing: Boolean
         get() = prefs.getBoolean("has_consented_audio_processing", false)
-        set(value) = prefs.edit().putBoolean("has_consented_audio_processing", value).apply()
+        set(value) {
+            val ts = if (value) {
+                val existing = prefs.getLong("consent_timestamp", 0L)
+                if (existing > 0L) existing else System.currentTimeMillis()
+            } else 0L
+            prefs.edit()
+                .putBoolean("has_consented_audio_processing", value)
+                .putLong("consent_timestamp", ts)
+                .apply()
+        }
+
+    fun getConsentFormattedDate(): String? {
+        val ts = consentTimestamp
+        if (ts <= 0L) return null
+        return try {
+            val sdf = java.text.SimpleDateFormat("MMM dd, yyyy 'at' hh:mm a", java.util.Locale.getDefault())
+            sdf.format(java.util.Date(ts))
+        } catch (e: Exception) {
+            null
+        }
+    }
 
     var fontSizeScale: Float
         get() = prefs.getFloat("font_size_scale", 1.0f)

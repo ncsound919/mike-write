@@ -1,6 +1,8 @@
 package com.example.deterministic
 
 import android.util.Log
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicInteger
 
 enum class RoutingDecision {
     DETERMINISTIC_CLEANER,
@@ -29,22 +31,22 @@ data class FallthroughLogEntry(
  */
 object DeterministicRouter {
 
-    private val fallthroughLogs = mutableListOf<FallthroughLogEntry>()
+    private val fallthroughLogs = CopyOnWriteArrayList<FallthroughLogEntry>()
 
     // Budget Guardrails
     private const val MAX_LLM_CALLS_PER_SESSION = 20
-    private var sessionLlmCallCount = 0
+    private val sessionLlmCallCount = AtomicInteger(0)
 
     fun resetSessionCounters() {
-        sessionLlmCallCount = 0
+        sessionLlmCallCount.set(0)
     }
 
     fun canMakeLlmCall(): Boolean {
-        return sessionLlmCallCount < MAX_LLM_CALLS_PER_SESSION
+        return sessionLlmCallCount.get() < MAX_LLM_CALLS_PER_SESSION
     }
 
     fun recordLlmCall(task: String, reason: String, wouldBeAgent: String) {
-        sessionLlmCallCount++
+        val currentCount = sessionLlmCallCount.incrementAndGet()
         val entry = FallthroughLogEntry(
             timestamp = System.currentTimeMillis(),
             task = task,
@@ -52,12 +54,12 @@ object DeterministicRouter {
             wouldBeAgent = wouldBeAgent
         )
         fallthroughLogs.add(entry)
-        Log.i("DeterministicRouter", "LLM Fallthrough recorded [#$sessionLlmCallCount]: $task -> reason: $reason, candidate agent: $wouldBeAgent")
+        Log.i("DeterministicRouter", "LLM Fallthrough recorded [#$currentCount]: $task -> reason: $reason, candidate agent: $wouldBeAgent")
     }
 
     fun getFallthroughLogs(): List<FallthroughLogEntry> = fallthroughLogs.toList()
 
     fun getFallthroughStats(): Pair<Int, Int> {
-        return Pair(sessionLlmCallCount, fallthroughLogs.size)
+        return Pair(sessionLlmCallCount.get(), fallthroughLogs.size)
     }
 }

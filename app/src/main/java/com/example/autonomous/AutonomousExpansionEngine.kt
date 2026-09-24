@@ -205,7 +205,7 @@ object AutonomousExpansionEngine {
     }
 
     private fun extractYear(text: String): Int? {
-        val matcher = java.util.regex.Pattern.compile("\\b(19\\d\\d|20[0-2]\\d)\\b").matcher(text)
+        val matcher = java.util.regex.Pattern.compile("\\b(19\\d{2}|20\\d{2})\\b").matcher(text)
         if (matcher.find()) {
             return matcher.group(1)?.toIntOrNull()
         }

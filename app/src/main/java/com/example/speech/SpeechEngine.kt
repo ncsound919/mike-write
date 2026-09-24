@@ -4,7 +4,9 @@ import android.content.Context
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import com.example.loop.VoiceLoopBus
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.Locale
 import kotlin.coroutines.resume
 
@@ -13,6 +15,8 @@ class SpeechEngine(context: Context) {
     private var tts: TextToSpeech? = null
     var isReady: Boolean = false
         private set
+
+    private val readyDeferred = CompletableDeferred<Boolean>()
 
     private var currentRate: Float = 0.95f
     private var currentPitch: Float = 1.0f
@@ -24,19 +28,37 @@ class SpeechEngine(context: Context) {
                 tts?.language = Locale.US
                 tts?.setSpeechRate(currentRate)
                 tts?.setPitch(currentPitch)
+                readyDeferred.complete(true)
                 VoiceLoopBus.appendLog("TTS Engine ready (rate: $currentRate, pitch: $currentPitch)")
             } else {
+                readyDeferred.complete(false)
                 VoiceLoopBus.appendLog("TTS Engine initialization failed (status: $status)")
             }
         }
     }
 
     /**
+     * Suspends until the TTS engine is fully initialized or timeout expires.
+     */
+    suspend fun awaitReady(timeoutMs: Long = 2000L): Boolean {
+        if (isReady) return true
+        return withTimeoutOrNull(timeoutMs) {
+            readyDeferred.await()
+        } ?: false
+    }
+
+    /**
      * Speaks the given text aloud and suspends until speech is completed or cancelled.
      */
     suspend fun speak(text: String): Unit = suspendCancellableCoroutine { cont ->
-        if (!isReady || tts == null) {
-            VoiceLoopBus.appendLog("TTS not ready yet. Skipping verbal playback: $text")
+        if (!isReady && tts == null) {
+            VoiceLoopBus.appendLog("TTS engine not initialized. Skipping verbal playback: $text")
+            if (cont.isActive) cont.resume(Unit)
+            return@suspendCancellableCoroutine
+        }
+
+        if (tts == null) {
+            VoiceLoopBus.appendLog("TTS engine null. Skipping: $text")
             if (cont.isActive) cont.resume(Unit)
             return@suspendCancellableCoroutine
         }
@@ -92,3 +114,4 @@ class SpeechEngine(context: Context) {
         isReady = false
     }
 }
+

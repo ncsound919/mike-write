@@ -69,6 +69,11 @@ class AndroidSttEngine(private val context: Context) : ListeningEngine {
                 return
             }
 
+            if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY || error == SpeechRecognizer.ERROR_CLIENT) {
+                VoiceLoopBus.appendLog("STT: Recreating recognizer after busy/client error ($error)")
+                recreateRecognizer()
+            }
+
             // In continuous dictation mode, handle natural speech pauses and timeouts cleanly
             if (isContinuousMode && (error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT || error == SpeechRecognizer.ERROR_NO_MATCH)) {
                 silenceTimeoutCount++
@@ -157,6 +162,24 @@ class AndroidSttEngine(private val context: Context) : ListeningEngine {
         }
     }
 
+    private fun recreateRecognizer(): SpeechRecognizer? {
+        try {
+            recognizer?.cancel()
+            recognizer?.destroy()
+        } catch (e: Exception) {
+            // ignore
+        }
+        recognizer = null
+        return try {
+            SpeechRecognizer.createSpeechRecognizer(context).apply {
+                setRecognitionListener(listener)
+            }.also { recognizer = it }
+        } catch (e: Exception) {
+            VoiceLoopBus.appendLog("Failed to recreate SpeechRecognizer: ${e.message}")
+            null
+        }
+    }
+
     override fun start(
         continuous: Boolean,
         onPartial: (String) -> Unit,
@@ -178,13 +201,24 @@ class AndroidSttEngine(private val context: Context) : ListeningEngine {
             }
 
             if (recognizer == null) {
-                recognizer = SpeechRecognizer.createSpeechRecognizer(context).apply {
-                    setRecognitionListener(listener)
-                }
+                recreateRecognizer()
             }
 
-            recognizer?.startListening(createSpeechIntent())
-            isListening = true
+            val currentRecognizer = recognizer
+            if (currentRecognizer == null) {
+                onError("Failed to initialize speech recognizer.")
+                return
+            }
+
+            try {
+                currentRecognizer.startListening(createSpeechIntent())
+                isListening = true
+            } catch (e: Exception) {
+                VoiceLoopBus.appendLog("startListening failed, attempting recreate: ${e.message}")
+                val fresh = recreateRecognizer()
+                fresh?.startListening(createSpeechIntent())
+                isListening = fresh != null
+            }
         } catch (e: Exception) {
             isListening = false
             VoiceLoopBus.appendLog("Failed to start recognizer: ${e.message}")

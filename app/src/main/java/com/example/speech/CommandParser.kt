@@ -42,7 +42,7 @@ object CommandParser {
         Command.EXPORT to listOf("export manuscript", "export book", "export pdf", "download pdf", "download book", "save file", "export"),
         Command.NEXT to listOf("next memory", "next", "continue", "forward", "skip"),
         Command.BACK to listOf("go back", "last memory", "back", "previous"),
-        Command.REVIEW to listOf("read whole book", "read book", "review", "read", "hear"),
+        Command.REVIEW to listOf("review memories", "review", "read memories", "hear memories", "review drafts"),
         Command.HELP to listOf("help", "what can i say", "options", "commands", "how does this work"),
         Command.UNDO to listOf("undo", "scratch that", "go back a step", "erase that"),
         Command.SAVE to listOf("save memory", "save draft", "keep this", "save", "keep", "approve"),
@@ -54,7 +54,7 @@ object CommandParser {
         Command.FASTER to listOf("faster", "speed up", "speak faster"),
         Command.PROMPT to listOf("prompt me", "ask me a question", "interview me", "question", "interview"),
         Command.CHAPTER to listOf("chapter", "next chapter", "change chapter", "new chapter"),
-        Command.BOOK to listOf("read whole book", "read memoir", "entire book", "summary"),
+        Command.BOOK to listOf("read whole book", "read memoir", "entire book", "summary", "book summary", "read book"),
         Command.DECONSTRUCT to listOf("breakdown", "deconstruct", "story elements", "perspectives", "analyze", "explain story", "layers"),
         Command.TIP to listOf("writing tip", "tip", "craft tip", "advice", "coach me", "writing advice"),
         Command.READINESS to listOf("readiness", "publishing readiness", "book status", "progress", "word count", "pages", "how ready is my book", "manuscript status")

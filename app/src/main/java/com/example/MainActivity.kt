@@ -89,6 +89,20 @@ class MainActivity : ComponentActivity() {
         loopController.stopEverything()
     }
 
+    override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent?): Boolean {
+        when (keyCode) {
+            android.view.KeyEvent.KEYCODE_VOLUME_DOWN -> {
+                com.example.loop.VoiceLoopBus.triggerSwitchAction(com.example.loop.AccessibilitySwitchAction.TOGGLE_RECORD_OR_CONFIRM)
+                return true
+            }
+            android.view.KeyEvent.KEYCODE_VOLUME_UP -> {
+                com.example.loop.VoiceLoopBus.triggerSwitchAction(com.example.loop.AccessibilitySwitchAction.STOP_OR_CANCEL)
+                return true
+            }
+        }
+        return super.onKeyDown(keyCode, event)
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         loopController.destroy()

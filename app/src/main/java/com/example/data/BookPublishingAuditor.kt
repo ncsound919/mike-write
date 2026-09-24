@@ -35,7 +35,8 @@ object BookPublishingAuditor {
         allPlannedChapters: List<String>
     ): PublishingReadinessReport {
         val wordsPerPassage = memories.map { mem ->
-            mem.transcript.split(Regex("\\s+")).filter { it.isNotBlank() }.size
+            val text = (mem.formattedProse?.takeIf { it.isNotBlank() } ?: mem.transcript).trim()
+            text.split(Regex("\\s+")).count { it.isNotBlank() }
         }
         val totalWords = wordsPerPassage.sum()
         // Standard trade book has ~250 words per typeset page
@@ -46,7 +47,10 @@ object BookPublishingAuditor {
 
         allPlannedChapters.forEach { chap ->
             val passages = grouped[chap] ?: emptyList()
-            val words = passages.sumOf { p -> p.transcript.split(Regex("\\s+")).count { it.isNotBlank() } }
+            val words = passages.sumOf { p ->
+                val text = (p.formattedProse?.takeIf { it.isNotBlank() } ?: p.transcript).trim()
+                text.split(Regex("\\s+")).count { it.isNotBlank() }
+            }
             val readMinutes = (words / 150).coerceAtLeast(if (words > 0) 1 else 0) // ~150 wpm reading speed
             chapterStatsMap[chap] = ChapterStats(passages.size, words, readMinutes)
         }
@@ -164,7 +168,8 @@ object BookPublishingAuditor {
                         appendLine("*(Chapter in progress)*")
                     } else {
                         chapterMemories.forEachIndexed { i, m ->
-                            appendLine(m.transcript)
+                            val text = (m.formattedProse?.takeIf { it.isNotBlank() } ?: m.transcript).trim()
+                            appendLine(text)
                             appendLine()
                             if (!m.reflection.isNullOrBlank() || !m.storyArc.isNullOrBlank()) {
                                 appendLine("> **Author's Reflection:** ${m.reflection ?: m.storyArc}")
@@ -206,8 +211,9 @@ object BookPublishingAuditor {
                         appendLine("[No recordings in this chapter yet]")
                     } else {
                         chapterMemories.forEachIndexed { i, m ->
+                            val text = (m.formattedProse?.takeIf { it.isNotBlank() } ?: m.transcript).trim()
                             appendLine("Section ${i + 1}:")
-                            appendLine(m.transcript)
+                            appendLine(text)
                             if (!m.storyArc.isNullOrBlank()) {
                                 appendLine("  Arc: ${m.storyArc}")
                             }

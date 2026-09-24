@@ -42,7 +42,7 @@ object AutonomousManuscriptWeaver {
         val chapter: String
     )
 
-    private val YEAR_PATTERN = Pattern.compile("\\b(19\\d\\d|20[0-2]\\d)\\b")
+    private val YEAR_PATTERN = Pattern.compile("\\b(19\\d{2}|20\\d{2})\\b")
     private val TWO_DIGIT_YEAR = Pattern.compile("\\b(?:in|of|spring|summer|fall|winter)\\s+['’]?(\\d{2})\\b", Pattern.CASE_INSENSITIVE)
     private val AGE_PATTERN = Pattern.compile("\\b(?:at\\s+age|when\\s+I\\s+was|around\\s+age)\\s+(\\d{1,2})\\b", Pattern.CASE_INSENSITIVE)
 

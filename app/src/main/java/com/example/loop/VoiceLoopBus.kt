@@ -1,8 +1,21 @@
 package com.example.loop
 
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+
+/**
+ * Real physical switch actions mapped to hardware buttons, accessibility switches,
+ * or volume keys.
+ */
+enum class AccessibilitySwitchAction {
+    TOGGLE_RECORD_OR_CONFIRM,
+    STOP_OR_CANCEL,
+    NEXT_ITEM
+}
 
 object VoiceLoopBus {
     private val _state = MutableStateFlow<LoopState>(LoopState.Idle)
@@ -19,6 +32,23 @@ object VoiceLoopBus {
 
     private val _systemLogs = MutableStateFlow<List<String>>(listOf("Mike Write system initialized."))
     val systemLogs: StateFlow<List<String>> = _systemLogs.asStateFlow()
+
+    // Real hardware switch & accessibility event stream
+    private val _switchActions = MutableSharedFlow<AccessibilitySwitchAction>(extraBufferCapacity = 16)
+    val switchActions: SharedFlow<AccessibilitySwitchAction> = _switchActions.asSharedFlow()
+
+    // Real Mic Test diagnostic state
+    private val _micTestResult = MutableStateFlow<String>("")
+    val micTestResult: StateFlow<String> = _micTestResult.asStateFlow()
+
+    fun triggerSwitchAction(action: AccessibilitySwitchAction) {
+        appendLog("Switch Event triggered: $action")
+        _switchActions.tryEmit(action)
+    }
+
+    fun setMicTestResult(text: String) {
+        _micTestResult.value = text
+    }
 
     fun publish(s: LoopState) {
         _state.value = s
@@ -49,3 +79,4 @@ object VoiceLoopBus {
         _systemLogs.value = current
     }
 }
+

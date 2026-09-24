@@ -406,33 +406,37 @@ object MemoirExportEngine {
     }
 
     /**
-     * Helper to wrap text according to a canvas paint and max width.
+     * Helper to wrap text according to a canvas paint and max width using paint.breakText
+     * to avoid O(n^2) string allocations and measurement overhead.
      */
     private fun wrapText(text: String, paint: Paint, maxWidth: Float): List<String> {
         val lines = mutableListOf<String>()
         val paragraphs = text.split("\n")
 
         for (paragraph in paragraphs) {
-            val words = paragraph.split(Regex("\\s+")).filter { it.isNotEmpty() }
-            if (words.isEmpty()) {
+            val trimmed = paragraph.trim()
+            if (trimmed.isEmpty()) {
                 lines.add("")
                 continue
             }
 
-            var currentLine = StringBuilder(words[0])
-            for (i in 1 until words.size) {
-                val word = words[i]
-                val testLine = "$currentLine $word"
-                val measure = paint.measureText(testLine)
-                if (measure <= maxWidth) {
-                    currentLine.append(" ").append(word)
-                } else {
-                    lines.add(currentLine.toString())
-                    currentLine = StringBuilder(word)
+            var start = 0
+            val len = trimmed.length
+            while (start < len) {
+                val charsCount = paint.breakText(trimmed, start, len, true, maxWidth, null)
+                if (charsCount <= 0) break
+                var end = start + charsCount
+                if (end < len) {
+                    val lastSpace = trimmed.lastIndexOf(' ', end)
+                    if (lastSpace > start) {
+                        end = lastSpace
+                    }
                 }
-            }
-            if (currentLine.isNotEmpty()) {
-                lines.add(currentLine.toString())
+                lines.add(trimmed.substring(start, end).trim())
+                start = end
+                while (start < len && trimmed[start] == ' ') {
+                    start++
+                }
             }
         }
         return lines

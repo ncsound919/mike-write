@@ -165,9 +165,32 @@ class ExampleRobolectricTest {
 
         settings.hasConsentedToAudioProcessing = true
         assertTrue(settings.hasConsentedToAudioProcessing)
+        assertTrue(settings.consentTimestamp > 0L)
+        assertNotNull(settings.getConsentFormattedDate())
 
         settings.liveEchoPlayback = true
         assertTrue(settings.liveEchoPlayback)
+    }
+
+    @Test
+    fun `command parser deduplication distinguishes book summary from memory review`() {
+        assertEquals(Command.BOOK, CommandParser.parse("read whole book"))
+        assertEquals(Command.BOOK, CommandParser.parse("read memoir"))
+        assertEquals(Command.BOOK, CommandParser.parse("summary"))
+        assertEquals(Command.REVIEW, CommandParser.parse("review"))
+        assertEquals(Command.REVIEW, CommandParser.parse("review memories"))
+    }
+
+    @Test
+    fun `deterministic router handles thread-safe counters and logs`() {
+        com.example.deterministic.DeterministicRouter.resetSessionCounters()
+        val (initialCount, _) = com.example.deterministic.DeterministicRouter.getFallthroughStats()
+        assertEquals(0, initialCount)
+        assertTrue(com.example.deterministic.DeterministicRouter.canMakeLlmCall())
+
+        com.example.deterministic.DeterministicRouter.recordLlmCall("test_task", "test_reason", "Agent 1")
+        val (updatedCount, _) = com.example.deterministic.DeterministicRouter.getFallthroughStats()
+        assertEquals(1, updatedCount)
     }
 
     // --- Deterministic Testing Suite (Rules D.1 - D.10) ---

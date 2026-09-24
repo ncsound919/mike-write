@@ -26,29 +26,79 @@ class VoiceLoopController(
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     val feedback = AudioHapticFeedback(context)
+    @Volatile
     var isRunning: Boolean = false
         private set
+    @Volatile
     var isRecording: Boolean = false
         private set
 
+    @Volatile
     private var lastPrompt: String = "Say record to dictate a story. Review to hear your book. Prompt me for an interview question. Or say breakdown to explore your story elements."
+    @Volatile
     private var pendingTranscript: String? = null
+    @Volatile
     private var latestPartialText: String? = null
+    @Volatile
     private var isAwaitingConfirmation: Boolean = false
+    @Volatile
     private var currentReviewIndex: Int = 0
+    @Volatile
     private var cachedReviewList: List<Memory> = emptyList()
 
     // Undo action snapshot
+    @Volatile
     private var lastSavedMemory: Memory? = null
+    @Volatile
     private var lastDiscardedTranscript: String? = null
+
+    init {
+        scope.launch {
+            VoiceLoopBus.switchActions.collect { action ->
+                handleSwitchAction(action)
+            }
+        }
+    }
+
+    private suspend fun handleSwitchAction(action: com.example.loop.AccessibilitySwitchAction) {
+        VoiceLoopBus.appendLog("Handling Switch Action: $action")
+        when (action) {
+            com.example.loop.AccessibilitySwitchAction.TOGGLE_RECORD_OR_CONFIRM -> {
+                if (isAwaitingConfirmation) {
+                    confirmSave()
+                } else if (isRecording) {
+                    finishRecording()
+                } else {
+                    beginRecording()
+                }
+            }
+            com.example.loop.AccessibilitySwitchAction.STOP_OR_CANCEL -> {
+                if (isAwaitingConfirmation) {
+                    confirmDelete()
+                } else if (isRecording) {
+                    isRecording = false
+                    listener.stop()
+                    feedback.playFeedback(AudioHapticFeedback.Cue.STOP_RECORDING)
+                    say("Recording cancelled.")
+                    listen()
+                } else {
+                    speech.stop()
+                    VoiceLoopBus.publish(LoopState.Idle)
+                }
+            }
+            com.example.loop.AccessibilitySwitchAction.NEXT_ITEM -> {
+                advanceReview(1)
+            }
+        }
+    }
 
     fun start() {
         if (isRunning) return
         isRunning = true
         VoiceLoopBus.appendLog("Voice loop started")
         scope.launch {
-            // Give TTS a split second to ensure audio focus
-            delay(400)
+            // Await real TTS engine readiness asynchronously
+            speech.awaitReady()
             mainMenu()
         }
     }
@@ -77,7 +127,6 @@ class VoiceLoopController(
         lastPrompt = text
         VoiceLoopBus.publish(LoopState.Speaking(text))
         speech.speak(text)
-        delay(200) // Brief breather for acoustics and user reflection
     }
 
     private fun listen() {
@@ -103,7 +152,6 @@ class VoiceLoopController(
                     if (isRunning) {
                         VoiceLoopBus.appendLog("STT pause or error: $err")
                         feedback.playFeedback(AudioHapticFeedback.Cue.NOT_UNDERSTOOD)
-                        delay(600)
                         listen()
                     }
                 }
@@ -303,9 +351,6 @@ class VoiceLoopController(
         VoiceLoopBus.publish(LoopState.Recording(System.currentTimeMillis(), "Listening to your story..."))
         say("Recording memory in $currentChap. Speak your story freely. Say done or tap when finished.")
 
-        // Brief acoustic breathing room before opening microphone
-        delay(350)
-
         // Listen continuously for user speech until they say "done", "stop", tap, or pause
         listener.start(
             continuous = true,
@@ -384,7 +429,6 @@ class VoiceLoopController(
                             } else {
                                 isRecording = false
                                 feedback.playFeedback(AudioHapticFeedback.Cue.NOT_UNDERSTOOD)
-                                delay(500)
                                 listen()
                             }
                         }
@@ -401,9 +445,6 @@ class VoiceLoopController(
         isRecording = false
         listener.stop()
         feedback.playFeedback(AudioHapticFeedback.Cue.STOP_RECORDING)
-
-        // Brief delay so recognizer finishes processing final audio frame
-        delay(180)
 
         // Integrate any in-flight partial text so no words are dropped
         val partial = latestPartialText?.trim().orEmpty().replace(stopPhraseRegex, "").trim()

@@ -497,7 +497,7 @@ fun CaregiverScreen(
                                 )
                                 Spacer(Modifier.height(16.dp))
 
-                                // Visual Level Bar
+                                 // Visual Level Bar
                                 Column {
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
@@ -518,6 +518,29 @@ fun CaregiverScreen(
                                     )
                                 }
 
+                                var micTestRecognized by remember { mutableStateOf("") }
+
+                                if (isRunningMicTest || micTestRecognized.isNotBlank()) {
+                                    Spacer(Modifier.height(10.dp))
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = MidnightCard,
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, if (isRunningMicTest) EmeraldVoice else BorderSubtle),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Column(modifier = Modifier.padding(10.dp)) {
+                                            Text("Live Diagnostic Speech Input:", fontSize = 11.sp, color = LightGrayMuted)
+                                            Spacer(Modifier.height(4.dp))
+                                            Text(
+                                                text = micTestRecognized.ifBlank { "Listening... Speak a sentence into the mic." },
+                                                fontSize = 13.sp,
+                                                color = if (isRunningMicTest) EmeraldVoice else OffWhiteText,
+                                                fontWeight = FontWeight.Medium
+                                            )
+                                        }
+                                    }
+                                }
+
                                 Spacer(Modifier.height(16.dp))
 
                                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -526,9 +549,30 @@ fun CaregiverScreen(
                                             isRunningMicTest = !isRunningMicTest
                                             if (isRunningMicTest) {
                                                 scope.launch {
-                                                    controller.say("Microphone test initiated. Please speak now.")
+                                                    micTestRecognized = "Listening... Speak into the microphone."
+                                                    controller.say("Microphone test started. Please speak a sentence now.")
+                                                    controller.listener.start(
+                                                        continuous = false,
+                                                        onPartial = { partial ->
+                                                            micTestRecognized = partial
+                                                        },
+                                                        onResult = { text ->
+                                                            micTestRecognized = text
+                                                            isRunningMicTest = false
+                                                            scope.launch {
+                                                                controller.say("Microphone verified! Heard: $text.")
+                                                            }
+                                                        },
+                                                        onError = { err ->
+                                                            if (isRunningMicTest) {
+                                                                micTestRecognized = "Status: $err"
+                                                                isRunningMicTest = false
+                                                            }
+                                                        }
+                                                    )
                                                 }
                                             } else {
+                                                controller.listener.stop()
                                                 controller.speech.stop()
                                             }
                                         },

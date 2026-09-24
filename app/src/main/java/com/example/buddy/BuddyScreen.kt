@@ -94,6 +94,39 @@ fun BuddyScreen(
     var showChapterSwitcher by remember { mutableStateOf(false) }
     var filterByCurrentChapterOnly by remember { mutableStateOf(false) }
 
+    // Real Input Mode state (Voice Loop, Push-to-Talk, Switch Scan Assist, Eye Gaze Dwell)
+    var activeInputMode by remember { mutableStateOf(controller.settings.activeInputMode) }
+    var scanIndex by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(activeInputMode) {
+        if (activeInputMode == "Switch Scan Assist") {
+            while (true) {
+                kotlinx.coroutines.delay(2500)
+                scanIndex = (scanIndex + 1) % 5
+            }
+        }
+    }
+
+    LaunchedEffect(activeInputMode, scanIndex) {
+        VoiceLoopBus.switchActions.collect { action ->
+            if (activeInputMode == "Switch Scan Assist" && action == com.example.loop.AccessibilitySwitchAction.TOGGLE_RECORD_OR_CONFIRM) {
+                when (scanIndex) {
+                    0 -> {
+                        if (loopState is LoopState.Recording || controller.isRecording) {
+                            controller.finishRecording()
+                        } else {
+                            controller.beginRecording()
+                        }
+                    }
+                    1 -> controller.handleUtterance("Prompt me")
+                    2 -> controller.handleUtterance("Review")
+                    3 -> controller.handleUtterance("Readiness")
+                    4 -> showExportDialog = true
+                }
+            }
+        }
+    }
+
     // Aesthetic color state based on engine loop
     val (statusLabel, statusColor, statusBg, statusIcon) = when (val s = loopState) {
         is LoopState.Idle -> Quadruple("READY", AmberGold, DarkNavySurface, Icons.Default.MicNone)
@@ -217,6 +250,55 @@ fun BuddyScreen(
                                         fontWeight = FontWeight.Bold,
                                         color = AmberGold,
                                         fontSize = 13.sp
+                                    )
+                                }
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MidnightCard,
+                                border = androidx.compose.foundation.BorderStroke(1.dp, if (activeInputMode != "Voice Loop (Always Listening)") AmberGold else BorderSubtle),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable {
+                                        val modes = listOf(
+                                            "Voice Loop (Always Listening)",
+                                            "Push-to-Talk",
+                                            "Switch Scan Assist",
+                                            "Eye Gaze Dwell"
+                                        )
+                                        val next = modes[(modes.indexOf(activeInputMode) + 1) % modes.size]
+                                        activeInputMode = next
+                                        controller.settings.activeInputMode = next
+                                    }
+                                    .testTag("input_mode_stepper_button")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = when (activeInputMode) {
+                                            "Push-to-Talk" -> Icons.Default.TouchApp
+                                            "Switch Scan Assist" -> Icons.Default.Sensors
+                                            "Eye Gaze Dwell" -> Icons.Default.Visibility
+                                            else -> Icons.Default.Mic
+                                        },
+                                        contentDescription = "Input Mode",
+                                        tint = AmberGold,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(
+                                        text = when (activeInputMode) {
+                                            "Push-to-Talk" -> "PTT"
+                                            "Switch Scan Assist" -> "Scan"
+                                            "Eye Gaze Dwell" -> "Dwell"
+                                            else -> "Loop"
+                                        },
+                                        fontWeight = FontWeight.Bold,
+                                        color = AmberGold,
+                                        fontSize = 12.sp
                                     )
                                 }
                             }
@@ -373,6 +455,8 @@ fun BuddyScreen(
                             (pulseScale + (audioLevel * 0.35f)).coerceIn(1.0f, 1.5f)
                         } else 1.0f
 
+                        val isOrbScanned = activeInputMode == "Switch Scan Assist" && scanIndex == 0
+
                         Box(
                             contentAlignment = Alignment.Center,
                             modifier = Modifier
@@ -384,7 +468,11 @@ fun BuddyScreen(
                                         listOf(statusColor.copy(alpha = 0.4f), Color.Transparent)
                                     )
                                 )
-                                .border(3.dp, statusColor, CircleShape)
+                                .border(
+                                    width = if (isOrbScanned) 5.dp else 3.dp,
+                                    color = if (isOrbScanned) AmberGold else statusColor,
+                                    shape = CircleShape
+                                )
                                 .clickable(
                                     role = Role.Button,
                                     onClickLabel = "Toggle voice recording"
@@ -496,7 +584,89 @@ fun BuddyScreen(
                     }
                 }
 
-                Spacer(Modifier.height(18.dp))
+                Spacer(Modifier.height(14.dp))
+
+                // Real Active Input Mode Accessibility Banner
+                if (activeInputMode == "Switch Scan Assist") {
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = AmberGold.copy(alpha = 0.15f),
+                        border = androidx.compose.foundation.BorderStroke(1.5.dp, AmberGold),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                // Tapping banner activates currently scanned target
+                                scope.launch {
+                                    when (scanIndex) {
+                                        0 -> {
+                                            if (loopState is LoopState.Recording || controller.isRecording) {
+                                                controller.finishRecording()
+                                            } else {
+                                                controller.beginRecording()
+                                            }
+                                        }
+                                        1 -> controller.handleUtterance("Prompt me")
+                                        2 -> controller.handleUtterance("Review")
+                                        3 -> controller.handleUtterance("Readiness")
+                                        4 -> showExportDialog = true
+                                    }
+                                }
+                            }
+                            .testTag("switch_scan_trigger_banner")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Sensors, contentDescription = null, tint = AmberGold, modifier = Modifier.size(22.dp))
+                            Spacer(Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = "SWITCH SCAN: ${
+                                        when(scanIndex) {
+                                            0 -> "1/5 Dictate Story (Voice Orb)"
+                                            1 -> "2/5 Prompt Me (AI Question)"
+                                            2 -> "3/5 Review Book Aloud"
+                                            3 -> "4/5 Manuscript Readiness"
+                                            else -> "5/5 Export Memoir"
+                                        }
+                                    }",
+                                    color = AmberGold,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = (13 * fontScale).sp
+                                )
+                                Text(
+                                    text = "Press Volume Down key, Switch, or Tap here to trigger",
+                                    color = OffWhiteText.copy(alpha = 0.85f),
+                                    fontSize = (11 * fontScale).sp
+                                )
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(14.dp))
+                } else if (activeInputMode == "Push-to-Talk") {
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = SkyBlue.copy(alpha = 0.15f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, SkyBlue.copy(alpha = 0.6f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.TouchApp, contentDescription = null, tint = SkyBlue, modifier = Modifier.size(20.dp))
+                            Spacer(Modifier.width(10.dp))
+                            Text(
+                                text = "PUSH-TO-TALK ACTIVE: Tap voice orb to record, tap again to save memory.",
+                                color = SkyBlue,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = (12 * fontScale).sp
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(14.dp))
+                }
 
                 // Audibly Navigable Voice Command Bar
                 Text(
@@ -536,6 +706,13 @@ fun BuddyScreen(
                     contentPadding = PaddingValues(vertical = 4.dp)
                 ) {
                     items(commandChips) { (title, subtitle, icon) ->
+                        val isScanned = activeInputMode == "Switch Scan Assist" && (
+                            (title == "Prompt me" && scanIndex == 1) ||
+                            (title == "Review" && scanIndex == 2) ||
+                            (title == "Readiness" && scanIndex == 3) ||
+                            (title == "Export" && scanIndex == 4)
+                        )
+
                         Card(
                             modifier = Modifier
                                 .width(135.dp)
@@ -546,8 +723,13 @@ fun BuddyScreen(
                                     }
                                 }
                                 .testTag("command_chip_${title.lowercase().replace(" ", "_")}"),
-                            colors = CardDefaults.cardColors(containerColor = MidnightCard),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle)
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isScanned) AmberGold.copy(alpha = 0.25f) else MidnightCard
+                            ),
+                            border = androidx.compose.foundation.BorderStroke(
+                                width = if (isScanned) 2.5.dp else 1.dp,
+                                color = if (isScanned) AmberGold else BorderSubtle
+                            )
                         ) {
                             Column(
                                 modifier = Modifier.padding(14.dp)
@@ -555,14 +737,14 @@ fun BuddyScreen(
                                 Icon(
                                     imageVector = icon,
                                     contentDescription = title,
-                                    tint = AmberGold,
+                                    tint = if (isScanned) AmberGold else AmberGold,
                                     modifier = Modifier.size(24.dp)
                                 )
                                 Spacer(Modifier.height(8.dp))
                                 Text(
                                     text = "\"$title\"",
                                     fontWeight = FontWeight.Bold,
-                                    color = OffWhiteText,
+                                    color = if (isScanned) AmberGold else OffWhiteText,
                                     fontSize = (14 * fontScale).sp
                                 )
                                 Text(
