@@ -1,8 +1,12 @@
 package com.example.ui.components
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -22,6 +26,11 @@ import com.example.data.BookReadinessReport
 import com.example.data.ReadinessStep
 import com.example.ui.theme.*
 
+/**
+ * BookReadinessCard:
+ * Premium interactive publication progress component showing detailed milestone tracking,
+ * category filtering (Structure, Volume, Metadata, Production), and actionable author steps.
+ */
 @Composable
 fun BookReadinessCard(
     report: BookReadinessReport,
@@ -29,6 +38,13 @@ fun BookReadinessCard(
     onNavigateToDrafting: (() -> Unit)? = null
 ) {
     var expandedSteps by remember { mutableStateOf(false) }
+    var selectedCategoryFilter by remember { mutableStateOf<String?>("All") }
+
+    val animatedProgress by animateFloatAsState(
+        targetValue = (report.completionPercentage / 100f).coerceIn(0f, 1f),
+        animationSpec = tween(durationMillis = 800),
+        label = "readiness_anim"
+    )
 
     Card(
         shape = RoundedCornerShape(20.dp),
@@ -49,7 +65,7 @@ fun BookReadinessCard(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier
-                            .size(36.dp)
+                            .size(38.dp)
                             .clip(CircleShape)
                             .background(AmberGold.copy(alpha = 0.15f)),
                         contentAlignment = Alignment.Center
@@ -78,12 +94,20 @@ fun BookReadinessCard(
                 }
 
                 Surface(
-                    shape = RoundedCornerShape(8.dp),
+                    shape = RoundedCornerShape(10.dp),
                     color = when {
                         report.completionPercentage >= 80 -> EmeraldVoice.copy(alpha = 0.2f)
                         report.completionPercentage >= 40 -> AmberGold.copy(alpha = 0.2f)
                         else -> SkyBlue.copy(alpha = 0.2f)
-                    }
+                    },
+                    border = BorderStroke(
+                        1.dp,
+                        when {
+                            report.completionPercentage >= 80 -> EmeraldVoice
+                            report.completionPercentage >= 40 -> AmberGold
+                            else -> SkyBlue
+                        }
+                    )
                 ) {
                     Text(
                         text = "${report.completionPercentage}%",
@@ -104,7 +128,7 @@ fun BookReadinessCard(
             // Multi-segment Visual Readiness Bar
             Column {
                 LinearProgressIndicator(
-                    progress = { report.completionPercentage / 100f },
+                    progress = { animatedProgress },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(12.dp)
@@ -144,7 +168,9 @@ fun BookReadinessCard(
             // Checklist Steps Toggle Button
             OutlinedButton(
                 onClick = { expandedSteps = !expandedSteps },
-                modifier = Modifier.fillMaxWidth().testTag("toggle_readiness_steps_button"),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("toggle_readiness_steps_button"),
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = OffWhiteText),
                 border = BorderStroke(1.dp, BorderSubtle),
                 shape = RoundedCornerShape(12.dp)
@@ -167,11 +193,46 @@ fun BookReadinessCard(
                 }
             }
 
-            // Expanded Step-by-Step Breakdown
+            // Expanded Step-by-Step Breakdown with Category Filter
             if (expandedSteps) {
+                Spacer(Modifier.height(14.dp))
+
+                val categories = listOf("All") + report.steps.map { it.category }.distinct()
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    categories.forEach { cat ->
+                        val isSelected = selectedCategoryFilter == cat
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (isSelected) AmberGold else MidnightCard,
+                            border = BorderStroke(1.dp, if (isSelected) AmberGold else BorderSubtle),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { selectedCategoryFilter = cat }
+                        ) {
+                            Text(
+                                text = cat,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isSelected) DeepNavy else OffWhiteText,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+                }
+
                 Spacer(Modifier.height(12.dp))
+
+                val filteredSteps = if (selectedCategoryFilter == "All" || selectedCategoryFilter == null) {
+                    report.steps
+                } else {
+                    report.steps.filter { it.category.equals(selectedCategoryFilter, ignoreCase = true) }
+                }
+
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    report.steps.forEach { step ->
+                    filteredSteps.forEach { step ->
                         ReadinessStepItem(step = step)
                     }
                 }
@@ -185,7 +246,7 @@ fun ReadinessStepItem(step: ReadinessStep) {
     Surface(
         shape = RoundedCornerShape(12.dp),
         color = MidnightCard,
-        border = BorderStroke(1.dp, if (step.isCompleted) EmeraldVoice.copy(alpha = 0.3f) else BorderSubtle),
+        border = BorderStroke(1.dp, if (step.isCompleted) EmeraldVoice.copy(alpha = 0.35f) else BorderSubtle),
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
@@ -196,7 +257,7 @@ fun ReadinessStepItem(step: ReadinessStep) {
         ) {
             Box(
                 modifier = Modifier
-                    .size(26.dp)
+                    .size(28.dp)
                     .clip(CircleShape)
                     .background(
                         if (step.isCompleted) EmeraldVoice.copy(alpha = 0.2f) else DarkNavySurface

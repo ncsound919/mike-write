@@ -27,11 +27,13 @@ enum class Command {
     AUTO_SEQUENCE, // Autonomous Manuscript Weaver: chronological timeline sequencing
     FIND_GAPS,     // Autonomous Expansion Engine: find literary gaps and expansion prompts
     HARMONIZE,    // Autonomous Style Harmonizer: voice consistency and style health
+    UNIFIED_PIPELINE, // Unified Automation: Run end-to-end editorial pipeline
     UNKNOWN
 }
 
 object CommandParser {
     private val map: Map<Command, List<String>> = mapOf(
+        Command.UNIFIED_PIPELINE to listOf("auto write", "automate", "run pipeline", "unified automation", "smart pipeline", "just work", "auto polish", "auto process"),
         Command.AUTO_SEQUENCE to listOf("auto sequence", "sequence book", "chronology", "order memories", "order scenes", "timeline", "sort memories"),
         Command.FIND_GAPS to listOf("find gaps", "story gaps", "expansion prompts", "missing stories", "narrative gaps", "book gaps", "expand book"),
         Command.HARMONIZE to listOf("harmonize voice", "harmonize style", "style check", "voice consistency", "polish book", "harmonize manuscript", "harmonize"),

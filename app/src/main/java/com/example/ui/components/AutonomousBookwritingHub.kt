@@ -58,6 +58,8 @@ fun AutonomousBookwritingHub(
     val timelineAnalysis = remember(memories) { AutonomousManuscriptWeaver.analyzeTimeline(memories) }
     val gapReport = remember(memories) { AutonomousExpansionEngine.auditManuscriptGaps(memories) }
     val styleScorecard = remember(memories) { AutonomousStyleHarmonizer.auditStyleHealth(memories) }
+    val pipelineExecution by com.example.autonomous.UnifiedAutomationPipeline.lastExecution.collectAsState()
+    val isAutomating by com.example.autonomous.UnifiedAutomationPipeline.isAutomating.collectAsState()
 
     var generatedBridges by remember { mutableStateOf<List<AutonomousManuscriptWeaver.NarrativeBridge>>(emptyList()) }
     var isGeneratingBridges by remember { mutableStateOf(false) }
@@ -132,15 +134,16 @@ fun AutonomousBookwritingHub(
 
                 Spacer(Modifier.height(16.dp))
 
-                // 3-way Feature Navigation Bar
+                // 4-way Feature Navigation Bar
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     val tabs = listOf(
                         Triple("Timeline Weaver", Icons.Default.Timeline, timelineAnalysis.inversionCount),
                         Triple("Gap Expansion", Icons.Default.Search, gapReport.totalGapsFound),
-                        Triple("Style Harmonizer", Icons.Default.Brush, styleScorecard.detectedIssues.size)
+                        Triple("Style Harmonizer", Icons.Default.Brush, styleScorecard.detectedIssues.size),
+                        Triple("Unified Pipeline", Icons.Default.AutoAwesome, if (pipelineExecution != null) 1 else 0)
                     )
 
                     tabs.forEachIndexed { index, (label, icon, badgeCount) ->
@@ -156,7 +159,7 @@ fun AutonomousBookwritingHub(
                             shape = RoundedCornerShape(12.dp)
                         ) {
                             Column(
-                                modifier = Modifier.padding(vertical = 10.dp, horizontal = 6.dp),
+                                modifier = Modifier.padding(vertical = 10.dp, horizontal = 4.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -170,12 +173,12 @@ fun AutonomousBookwritingHub(
                                         Spacer(Modifier.width(4.dp))
                                         Surface(
                                             shape = CircleShape,
-                                            color = if (isSelected) DeepNavy else CrimsonRecord,
+                                            color = if (isSelected) DeepNavy else if (index == 3) EmeraldVoice else CrimsonRecord,
                                             modifier = Modifier.size(16.dp)
                                         ) {
                                             Box(contentAlignment = Alignment.Center) {
                                                 Text(
-                                                    text = badgeCount.toString(),
+                                                    text = if (index == 3) "✓" else badgeCount.toString(),
                                                     color = if (isSelected) AmberGold else Color.White,
                                                     fontSize = 10.sp,
                                                     fontWeight = FontWeight.Bold
@@ -187,7 +190,7 @@ fun AutonomousBookwritingHub(
                                 Spacer(Modifier.height(4.dp))
                                 Text(
                                     text = label,
-                                    fontSize = 11.sp,
+                                    fontSize = 10.sp,
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                                     color = if (isSelected) DeepNavy else OffWhiteText,
                                     maxLines = 1
@@ -235,6 +238,13 @@ fun AutonomousBookwritingHub(
             2 -> StyleHarmonizerSection(
                 controller = controller,
                 scorecard = styleScorecard,
+                memories = memories
+            )
+
+            3 -> UnifiedPipelineSection(
+                controller = controller,
+                execution = pipelineExecution,
+                isAutomating = isAutomating,
                 memories = memories
             )
         }
@@ -731,3 +741,203 @@ private fun StyleHarmonizerSection(
         }
     }
 }
+
+// -------------------------------------------------------------
+// FEATURE 4: UNIFIED "JUST WORKS" PIPELINE SECTION
+// -------------------------------------------------------------
+@Composable
+private fun UnifiedPipelineSection(
+    controller: VoiceLoopController,
+    execution: com.example.autonomous.UnifiedAutomationPipeline.AutomationExecutionResult?,
+    isAutomating: Boolean,
+    memories: List<Memory>
+) {
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+
+    var autoSave by remember { mutableStateOf(controller.settings.smartAutoSave) }
+    var autoEditorial by remember { mutableStateOf(controller.settings.autoEditorialPipeline) }
+    var autoTimeline by remember { mutableStateOf(controller.settings.autoWeaveTimeline) }
+    var autoGaps by remember { mutableStateOf(controller.settings.autoGapAuditing) }
+    var autoHarmonize by remember { mutableStateOf(controller.settings.autoVoiceHarmonizing) }
+
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        // Automation Control Master Card
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = DarkNavySurface),
+            border = BorderStroke(1.dp, AmberGold.copy(alpha = 0.5f))
+        ) {
+            Column(modifier = Modifier.padding(18.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Unified Autonomous Pipeline",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = OffWhiteText
+                            )
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = "Chains timeline weaving, gap auditing, style polishing, and chapter routing into one fluid background pipeline so authoring 'just works'.",
+                            style = MaterialTheme.typography.bodySmall.copy(color = LightGrayMuted)
+                        )
+                    }
+
+                    Spacer(Modifier.width(12.dp))
+
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                controller.runUnifiedPipeline()
+                                Toast.makeText(context, "Executing unified autonomous pipeline...", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        enabled = !isAutomating && memories.isNotEmpty(),
+                        colors = ButtonDefaults.buttonColors(containerColor = AmberGold, contentColor = DeepNavy),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        if (isAutomating) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                color = DeepNavy,
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Icon(Icons.Default.Bolt, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Run Pipeline", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(16.dp))
+                HorizontalDivider(color = BorderSubtle, thickness = 1.dp)
+                Spacer(Modifier.height(14.dp))
+
+                // Automation Toggles
+                Text(
+                    text = "AUTOMATION PIPELINE MODULES",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        color = AmberGold,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.sp
+                    )
+                )
+                Spacer(Modifier.height(8.dp))
+
+                val toggles = listOf(
+                    Triple("Smart Auto-Save", "Auto-saves dictated memories without blocking verbal confirmation", autoSave) to {
+                        val next = !autoSave
+                        autoSave = next
+                        controller.settings.smartAutoSave = next
+                    },
+                    Triple("Auto Editorial Pipeline", "Runs background analysis & next-topic discovery immediately on save", autoEditorial) to {
+                        val next = !autoEditorial
+                        autoEditorial = next
+                        controller.settings.autoEditorialPipeline = next
+                    },
+                    Triple("Timeline Weaving", "Detects chronological inversions & orders scenes naturally", autoTimeline) to {
+                        val next = !autoTimeline
+                        autoTimeline = next
+                        controller.settings.autoWeaveTimeline = next
+                    },
+                    Triple("Gap & Deficit Auditing", "Identifies missing life milestones & generates follow-up questions", autoGaps) to {
+                        val next = !autoGaps
+                        autoGaps = next
+                        controller.settings.autoGapAuditing = next
+                    },
+                    Triple("Voice & Style Harmonizing", "Polishes point-of-view stability & strips oral crutches", autoHarmonize) to {
+                        val next = !autoHarmonize
+                        autoHarmonize = next
+                        controller.settings.autoVoiceHarmonizing = next
+                    }
+                )
+
+                toggles.forEach { (meta, onToggle) ->
+                    val (title, desc, isChecked) = meta
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(text = title, fontWeight = FontWeight.SemiBold, color = OffWhiteText, fontSize = 13.sp)
+                            Text(text = desc, color = LightGrayMuted, fontSize = 11.sp)
+                        }
+                        Switch(
+                            checked = isChecked,
+                            onCheckedChange = { onToggle() },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = DeepNavy,
+                                checkedTrackColor = AmberGold
+                            )
+                        )
+                    }
+                }
+            }
+        }
+
+        // Live Execution Telemetry Card
+        if (execution != null) {
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MidnightCard),
+                border = BorderStroke(1.dp, EmeraldVoice.copy(alpha = 0.5f))
+            ) {
+                Column(modifier = Modifier.padding(18.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.CheckCircle, contentDescription = null, tint = EmeraldVoice)
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = "Last Pipeline Telemetry Result",
+                            fontWeight = FontWeight.Bold,
+                            color = OffWhiteText,
+                            fontSize = 15.sp
+                        )
+                    }
+                    Spacer(Modifier.height(12.dp))
+
+                    Text(
+                        text = "Passage: ${execution.passageTitle} (${execution.chapter})",
+                        fontWeight = FontWeight.Bold,
+                        color = AmberGoldLight,
+                        fontSize = 13.sp
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = "• Inversions Detected: ${execution.timelineInversionsDetected}\n• Manuscript Gaps: ${execution.manuscriptGapsCount}\n• Style POV Stability: ${execution.stylePovStability}%\n• Style Refinements: ${execution.detectedStyleIssuesCount}",
+                        color = OffWhiteText,
+                        fontSize = 12.sp,
+                        lineHeight = 18.sp
+                    )
+
+                    if (execution.topGapPrompt != null) {
+                        Spacer(Modifier.height(8.dp))
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = DarkNavySurface,
+                            border = BorderStroke(1.dp, BorderSubtle),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = "Next Suggested Topic: \"${execution.topGapPrompt}\"",
+                                color = OffWhiteText,
+                                fontSize = 12.sp,
+                                modifier = Modifier.padding(10.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+

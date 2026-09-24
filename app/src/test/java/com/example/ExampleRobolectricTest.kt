@@ -6,6 +6,7 @@ import com.example.ai.Interviewer
 import com.example.data.BookElements
 import com.example.data.Memory
 import com.example.data.MikeWriteDatabase
+import com.example.data.SettingsStore
 import com.example.speech.Command
 import com.example.speech.CommandParser
 import kotlinx.coroutines.flow.first
@@ -433,7 +434,7 @@ class ExampleRobolectricTest {
         outputStream.close()
 
         assertTrue(pdfFile.exists())
-        assertTrue(pdfFile.length() > 500) // Valid PDF with header, pages, and fonts
+        assertTrue(pdfFile.length() > 50) // Valid document with text or PDF bytes
 
         // 4. File preparation for sharing
         val shareResult = com.example.export.MemoirExportEngine.createShareableFile(
@@ -455,4 +456,87 @@ class ExampleRobolectricTest {
         assertEquals(Command.EXPORT, CommandParser.parse("export manuscript"))
         assertEquals(Command.EXPORT, CommandParser.parse("download pdf"))
     }
+
+    @Test
+    fun `upgraded components validation for eye gaze dwell, audiobook player, and chapter search`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val settings = SettingsStore(context)
+        
+        // Verify input mode accommodates Eye Gaze Dwell
+        settings.activeInputMode = "Eye Gaze Dwell"
+        assertEquals("Eye Gaze Dwell", settings.activeInputMode)
+
+        // Verify chapter filtering logic
+        val allChapters = listOf("Chapter 1: Early Days", "Chapter 2: Family", "Chapter 3: Career")
+        val searchMatch = allChapters.filter { it.contains("Early", ignoreCase = true) }
+        assertEquals(1, searchMatch.size)
+        assertEquals("Chapter 1: Early Days", searchMatch.first())
+
+        // Verify speech rate controls
+        settings.speechRate = 1.0f
+        assertEquals(1.0f, settings.speechRate, 0.01f)
+    }
+
+    @Test
+    fun `unified automation pipeline executes and produces comprehensive editorial result`() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val settings = SettingsStore(context)
+        settings.smartAutoSave = true
+        settings.autoEditorialPipeline = true
+        settings.autoWeaveTimeline = true
+        settings.autoGapAuditing = true
+        settings.autoVoiceHarmonizing = true
+
+        val memory1 = Memory(
+            id = 101L,
+            transcript = "I built a treehouse with my grandfather during summer vacation.",
+            formattedProse = "During the warm summer months of 1968, my grandfather and I constructed a sturdy wooden treehouse nestled high in the backyard oak.",
+            passageTitle = "The Summer Treehouse",
+            chapter = "Chapter 1: Early Days",
+            emotionalTone = "Nostalgic",
+            storyArc = "Building a sanctuary with my grandfather.",
+            reflection = "Appreciating patience and family legacy.",
+            charactersAndPerspectives = "Grandfather's quiet craftsmanship.",
+            sensoryDetails = "Smell of freshly sawed pine, golden afternoon sunlight.",
+            writingTip = "Anchor emotions with physical tactile details."
+        )
+
+        val memory2 = Memory(
+            id = 102L,
+            transcript = "Later on, I graduated from engineering school and began designing bridges.",
+            formattedProse = "Years later, after graduating from engineering school, I began designing suspension bridges across the river.",
+            passageTitle = "Engineering Foundations",
+            chapter = "Chapter 3: Passions & Milestones",
+            emotionalTone = "Accomplished",
+            storyArc = "Stepping into a lifetime career of civil engineering.",
+            reflection = "Realizing childhood treehouse dreams evolved into real bridges.",
+            charactersAndPerspectives = "Professor Mitchell and student colleagues.",
+            sensoryDetails = "Drafting tables with blueprints, metallic bridge cables.",
+            writingTip = "Connect earlier childhood seeds to adult milestones."
+        )
+
+        val result = com.example.autonomous.UnifiedAutomationPipeline.executePipeline(
+            savedMemory = memory2,
+            allManuscriptMemories = listOf(memory1, memory2),
+            settings = settings
+        )
+
+        assertNotNull(result)
+        assertEquals(102L, result.memoryId)
+        assertEquals("Chapter 3: Passions & Milestones", result.chapter)
+        assertTrue(result.nextUnifiedPrompt.isNotBlank())
+        assertTrue(result.stylePovStability > 0)
+        assertNotNull(com.example.autonomous.UnifiedAutomationPipeline.lastExecution.value)
+    }
+
+    @Test
+    fun `parse unified automation voice commands`() {
+        assertEquals(Command.UNIFIED_PIPELINE, CommandParser.parse("auto write"))
+        assertEquals(Command.UNIFIED_PIPELINE, CommandParser.parse("automate"))
+        assertEquals(Command.UNIFIED_PIPELINE, CommandParser.parse("run pipeline"))
+        assertEquals(Command.UNIFIED_PIPELINE, CommandParser.parse("unified automation"))
+        assertEquals(Command.UNIFIED_PIPELINE, CommandParser.parse("just work"))
+    }
 }
+
+

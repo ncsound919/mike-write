@@ -1,5 +1,6 @@
 package com.example.ui.components
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -10,10 +11,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -29,7 +32,7 @@ import com.example.ui.theme.*
 /**
  * ChapterSwitcherDialog:
  * Senior-optimized high-contrast modal for selecting and switching active book chapters
- * with live passage count metrics and instant auditory confirmation.
+ * with live passage count metrics, instant search filtering, and auditory chapter previews.
  */
 @Composable
 fun ChapterSwitcherDialog(
@@ -40,6 +43,16 @@ fun ChapterSwitcherDialog(
     onAuditionChapter: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
+    var searchQuery by remember { mutableStateOf("") }
+
+    val filteredChapters = remember(searchQuery, allChapters) {
+        if (searchQuery.isBlank()) {
+            allChapters
+        } else {
+            allChapters.filter { it.contains(searchQuery, ignoreCase = true) }
+        }
+    }
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -47,7 +60,7 @@ fun ChapterSwitcherDialog(
         Card(
             modifier = Modifier
                 .fillMaxWidth(0.94f)
-                .fillMaxHeight(0.85f)
+                .fillMaxHeight(0.88f)
                 .padding(vertical = 16.dp),
             shape = RoundedCornerShape(24.dp),
             colors = CardDefaults.cardColors(containerColor = DarkNavySurface),
@@ -90,7 +103,7 @@ fun ChapterSwitcherDialog(
                                 )
                             )
                             Text(
-                                text = "Tap a chapter to focus your voice dictation",
+                                text = "Focus dictation or preview chapters aloud",
                                 style = MaterialTheme.typography.bodySmall.copy(color = LightGrayMuted)
                             )
                         }
@@ -98,21 +111,55 @@ fun ChapterSwitcherDialog(
 
                     IconButton(
                         onClick = onDismiss,
-                        modifier = Modifier.size(40.dp).testTag("close_chapter_dialog_button")
+                        modifier = Modifier
+                            .size(40.dp)
+                            .testTag("close_chapter_dialog_button")
                     ) {
                         Icon(Icons.Default.Close, contentDescription = "Close", tint = OffWhiteText)
                     }
                 }
 
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(14.dp))
+
+                // Quick Search Bar
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text("Search chapters...", color = LightGrayMuted) },
+                    leadingIcon = {
+                        Icon(Icons.Default.Search, contentDescription = null, tint = AmberGold)
+                    },
+                    trailingIcon = {
+                        if (searchQuery.isNotBlank()) {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(Icons.Default.Close, contentDescription = "Clear", tint = LightGrayMuted)
+                            }
+                        }
+                    },
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = AmberGold,
+                        unfocusedBorderColor = BorderSubtle,
+                        focusedTextColor = OffWhiteText,
+                        unfocusedTextColor = OffWhiteText,
+                        focusedContainerColor = MidnightCard,
+                        unfocusedContainerColor = MidnightCard
+                    ),
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("chapter_search_input")
+                )
+
+                Spacer(Modifier.height(14.dp))
                 HorizontalDivider(color = BorderSubtle, thickness = 1.dp)
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(14.dp))
 
                 LazyColumn(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    items(allChapters) { chapterName ->
+                    items(filteredChapters) { chapterName ->
                         val isSelected = chapterName.equals(currentChapter, ignoreCase = true)
                         val chapterMemories = memories.filter { it.chapter.equals(chapterName, ignoreCase = true) }
                         val wordCount = chapterMemories.sumOf {
@@ -201,7 +248,9 @@ fun ChapterSwitcherDialog(
                                 if (chapterMemories.isNotEmpty()) {
                                     IconButton(
                                         onClick = { onAuditionChapter(chapterName) },
-                                        modifier = Modifier.size(44.dp).testTag("audition_chapter_$chapterName")
+                                        modifier = Modifier
+                                            .size(44.dp)
+                                            .testTag("audition_chapter_$chapterName")
                                     ) {
                                         Icon(
                                             imageVector = Icons.AutoMirrored.Filled.VolumeUp,

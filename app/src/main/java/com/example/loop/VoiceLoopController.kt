@@ -15,6 +15,8 @@ import com.example.speech.ListeningEngine
 import com.example.speech.SpeechEngine
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 class VoiceLoopController(
     private val context: Context,
@@ -26,6 +28,7 @@ class VoiceLoopController(
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     val feedback = AudioHapticFeedback(context)
+    private val stateMutex = Mutex()
     @Volatile
     var isRunning: Boolean = false
         private set
@@ -236,6 +239,10 @@ class VoiceLoopController(
             Command.HARMONIZE -> {
                 feedback.playFeedback(AudioHapticFeedback.Cue.BUTTON_TAP)
                 runHarmonizeVoice()
+            }
+            Command.UNIFIED_PIPELINE -> {
+                feedback.playFeedback(AudioHapticFeedback.Cue.BUTTON_TAP)
+                runUnifiedPipeline()
             }
             Command.SLOWER -> {
                 val newRate = (settings.speechRate - 0.15f).coerceAtLeast(0.6f)
@@ -472,95 +479,163 @@ class VoiceLoopController(
         val cleanedText = com.example.deterministic.CleanerAgent.clean(text)
         pendingTranscript = if (cleanedText.isNotBlank()) cleanedText else text
 
-        isAwaitingConfirmation = true
-        val echoMsg = com.example.deterministic.DeterministicWriterEngine.buildEchoConfirmation(pendingTranscript!!)
-        say(echoMsg)
-        listen()
+        // Unified Automation: If Smart Auto Save is enabled, seamlessly transition straight to formatting & saving
+        // without blocking senior/paralyzed authors on manual verbal confirmation, while announcing and allowing undo anytime!
+        if (settings.smartAutoSave) {
+            VoiceLoopBus.appendLog("Unified Automation: Smart Auto-Save automatically proceeding to confirmSave()")
+            confirmSave()
+        } else {
+            isAwaitingConfirmation = true
+            val echoMsg = com.example.deterministic.DeterministicWriterEngine.buildEchoConfirmation(pendingTranscript!!)
+            say(echoMsg)
+            listen()
+        }
     }
 
-    suspend fun confirmSave() {
+    suspend fun confirmSave() = stateMutex.withLock {
         val text = pendingTranscript
         if (text.isNullOrBlank()) {
             say("There is nothing pending to save. Say record to dictate.")
             listen()
-            return
+            return@withLock
         }
 
         VoiceLoopBus.publish(LoopState.Processing("Formatting prose and analyzing story elements..."))
         val chapter = settings.currentChapter
 
-        // Fetch existing Room chapters for classification
-        val existingRoomChapters = withContext(Dispatchers.IO) {
-            db.chapterDao().getAllChapters().firstOrNull()?.map { it.title } ?: emptyList()
-        }
-
-        // Compartmentalize dictated story, format prose, and detect chapter placement/creation
-        val elements = interviewer.analyzeBookElements(text, chapter, existingRoomChapters)
-
-        // Automated Chapter Creation Integration
-        var isAutoCreated = false
-        val finalChapter = if (elements.assignedChapter.isNotBlank()) elements.assignedChapter else chapter
-
-        if (elements.createNewChapter && elements.assignedChapter.isNotBlank()) {
-            val existing = withContext(Dispatchers.IO) {
-                db.chapterDao().getChapterByTitle(elements.assignedChapter)
+        try {
+            // Fetch existing Room chapters for classification
+            val existingRoomChapters = withContext(Dispatchers.IO) {
+                db.chapterDao().getAllChapters().firstOrNull()?.map { it.title } ?: emptyList()
             }
-            if (existing == null) {
-                val newChapEntity = com.example.data.ChapterEntity(
-                    title = elements.assignedChapter,
-                    description = elements.newChapterDescription.ifBlank { "Auto-created story theme section" },
-                    targetWordCount = elements.newChapterTargetWords,
-                    orderIndex = existingRoomChapters.size
+
+            // Compartmentalize dictated story, format prose, and detect chapter placement/creation
+            val elements = interviewer.analyzeBookElements(text, chapter, existingRoomChapters)
+
+            // Automated Chapter Creation Integration
+            var isAutoCreated = false
+            val finalChapter = if (elements.assignedChapter.isNotBlank()) elements.assignedChapter else chapter
+
+            if (elements.createNewChapter && elements.assignedChapter.isNotBlank()) {
+                val existing = withContext(Dispatchers.IO) {
+                    db.chapterDao().getChapterByTitle(elements.assignedChapter)
+                }
+                if (existing == null) {
+                    val newChapEntity = com.example.data.ChapterEntity(
+                        title = elements.assignedChapter,
+                        description = elements.newChapterDescription.ifBlank { "Auto-created story theme section" },
+                        targetWordCount = elements.newChapterTargetWords,
+                        orderIndex = existingRoomChapters.size
+                    )
+                    withContext(Dispatchers.IO) {
+                        db.chapterDao().insertChapter(newChapEntity)
+                    }
+                    isAutoCreated = true
+                    settings.currentChapter = elements.assignedChapter
+                    VoiceLoopBus.appendLog("Auto-created new Room book chapter: ${elements.assignedChapter}")
+                }
+            }
+
+            val newMemory = Memory(
+                createdAt = System.currentTimeMillis(),
+                transcript = text,
+                formattedProse = elements.formattedProse.ifBlank { text },
+                passageTitle = elements.passageTitle.ifBlank { "Story Passage in $finalChapter" },
+                emotionalTone = elements.emotionalTone.ifBlank { "Reflective" },
+                chapter = finalChapter,
+                isAutoChapterCreated = isAutoCreated || elements.createNewChapter,
+                prompt = lastPrompt,
+                approved = true,
+                storyArc = elements.storyArc,
+                reflection = elements.reflection,
+                charactersAndPerspectives = elements.charactersAndPerspectives,
+                sensoryDetails = elements.sensoryDetails,
+                writingTip = elements.writingTip
+            )
+
+            val insertedId = withContext(Dispatchers.IO) {
+                db.memoryDao().insert(newMemory)
+            }
+            val memoryWithId = newMemory.copy(id = insertedId)
+            lastSavedMemory = memoryWithId
+            lastDiscardedTranscript = null
+
+            feedback.playFeedback(AudioHapticFeedback.Cue.MEMORY_SAVED)
+            pendingTranscript = null
+            isAwaitingConfirmation = false
+
+            // Fetch all memories to feed background unified automation pipeline
+            val allMemories = withContext(Dispatchers.IO) {
+                db.memoryDao().getAllMemoriesAsc().firstOrNull() ?: listOf(memoryWithId)
+            }
+
+            // Unified Automation: Auto-execute timeline weaving, gap auditing, and voice harmonizing in background
+            val announcement = if (settings.autoEditorialPipeline) {
+                VoiceLoopBus.publish(LoopState.Processing("Autonomous Pipeline: Weaving timeline & auditing gaps..."))
+                val autoResult = try {
+                    com.example.autonomous.UnifiedAutomationPipeline.executePipeline(
+                        savedMemory = memoryWithId,
+                        allManuscriptMemories = allMemories,
+                        settings = settings
+                    )
+                } catch (e: Exception) {
+                    VoiceLoopBus.appendLog("Auto-pipeline warning: ${e.message}")
+                    com.example.autonomous.UnifiedPipelineResult(
+                        chapterOrganized = finalChapter,
+                        chronologicalOrderFixed = false,
+                        voicePolished = false,
+                        nextUnifiedPrompt = "Story saved to $finalChapter! Say record to continue or review to listen."
+                    )
+                }
+                val baseAnnouncement = if (isAutoCreated) {
+                    "Created new book chapter: $finalChapter, and formatted story! "
+                } else {
+                    "Saved story passage to $finalChapter. "
+                }
+                baseAnnouncement + autoResult.nextUnifiedPrompt
+            } else {
+                // Generate intelligent AI follow-up for next thought
+                VoiceLoopBus.publish(LoopState.Processing("Generating interviewer question..."))
+                val followUp = try {
+                    interviewer.followUp(text, finalChapter)
+                } catch (e: Exception) {
+                    "What happened next in this part of your life?"
+                }
+                if (isAutoCreated) {
+                    "Created new book chapter section: $finalChapter, and formatted your story! Author tip: ${elements.writingTip} $followUp Say record to answer, or review to hear your chapters."
+                } else {
+                    "Formatted and saved story passage under $finalChapter. Author tip: ${elements.writingTip} $followUp Say record to answer, or review to hear your chapters."
+                }
+            }
+
+            say(announcement)
+            listen()
+        } catch (e: Exception) {
+            VoiceLoopBus.appendLog("Error in confirmSave: ${e.message}")
+            // Resilient emergency fallback: preserve story unconditionally in local database
+            try {
+                val emergencyMemory = Memory(
+                    createdAt = System.currentTimeMillis(),
+                    transcript = text,
+                    formattedProse = text,
+                    passageTitle = "Story Passage in $chapter",
+                    emotionalTone = "Reflective",
+                    chapter = chapter,
+                    approved = true
                 )
                 withContext(Dispatchers.IO) {
-                    db.chapterDao().insertChapter(newChapEntity)
+                    db.memoryDao().insert(emergencyMemory)
                 }
-                isAutoCreated = true
-                settings.currentChapter = elements.assignedChapter
-                VoiceLoopBus.appendLog("Auto-created new Room book chapter: ${elements.assignedChapter}")
+                pendingTranscript = null
+                isAwaitingConfirmation = false
+                feedback.playFeedback(AudioHapticFeedback.Cue.MEMORY_SAVED)
+                say("Saved your story to $chapter. Say record to continue.")
+            } catch (dbEx: Exception) {
+                feedback.playFeedback(AudioHapticFeedback.Cue.NOT_UNDERSTOOD)
+                say("Unable to save story right now. Your text is kept in memory.")
             }
+            listen()
         }
-
-        val newMemory = Memory(
-            createdAt = System.currentTimeMillis(),
-            transcript = text,
-            formattedProse = elements.formattedProse.ifBlank { text },
-            passageTitle = elements.passageTitle.ifBlank { "Story Passage in $finalChapter" },
-            emotionalTone = elements.emotionalTone.ifBlank { "Reflective" },
-            chapter = finalChapter,
-            isAutoChapterCreated = isAutoCreated || elements.createNewChapter,
-            prompt = lastPrompt,
-            approved = true,
-            storyArc = elements.storyArc,
-            reflection = elements.reflection,
-            charactersAndPerspectives = elements.charactersAndPerspectives,
-            sensoryDetails = elements.sensoryDetails,
-            writingTip = elements.writingTip
-        )
-
-        val insertedId = withContext(Dispatchers.IO) {
-            db.memoryDao().insert(newMemory)
-        }
-        val memoryWithId = newMemory.copy(id = insertedId)
-        lastSavedMemory = memoryWithId
-        lastDiscardedTranscript = null
-
-        feedback.playFeedback(AudioHapticFeedback.Cue.MEMORY_SAVED)
-        pendingTranscript = null
-        isAwaitingConfirmation = false
-
-        // Generate intelligent AI follow-up for next thought
-        VoiceLoopBus.publish(LoopState.Processing("Generating interviewer question..."))
-        val followUp = interviewer.followUp(text, finalChapter)
-
-        val announcement = if (isAutoCreated) {
-            "Created new book chapter section: $finalChapter, and formatted your story! Author tip: ${elements.writingTip} $followUp Say record to answer, or review to hear your chapters."
-        } else {
-            "Formatted and saved story passage under $finalChapter. Author tip: ${elements.writingTip} $followUp Say record to answer, or review to hear your chapters."
-        }
-
-        say(announcement)
-        listen()
     }
 
     suspend fun confirmDelete() {
@@ -882,10 +957,48 @@ class VoiceLoopController(
         listen()
     }
 
+    suspend fun runUnifiedPipeline() {
+        VoiceLoopBus.publish(LoopState.Processing("Executing Unified Automation Pipeline..."))
+        val allMemories = withContext(Dispatchers.IO) {
+            db.memoryDao().getAllMemoriesAsc().firstOrNull() ?: emptyList()
+        }
+
+        if (allMemories.isEmpty()) {
+            say("No memories recorded yet. Say record to dictate your first story and the pipeline will automatically format, weave, and organize it.")
+            listen()
+            return
+        }
+
+        val latest = allMemories.last()
+        val result = com.example.autonomous.UnifiedAutomationPipeline.executePipeline(
+            savedMemory = latest,
+            allManuscriptMemories = allMemories,
+            settings = settings
+        )
+
+        val spokenSummary = buildString {
+            append("Unified Pipeline execution complete across ${allMemories.size} memories. ")
+            if (result.timelineInversionsDetected > 0) {
+                append("Detected ${result.timelineInversionsDetected} timeline variations. ")
+            } else {
+                append("Timeline sequence is consistent. ")
+            }
+            append("POV stability is ${result.stylePovStability} percent. ")
+            if (result.topGapPrompt != null) {
+                append("Next suggested topic: ${result.topGapPrompt}. ")
+            }
+            append("Say record to continue, or review to listen.")
+        }
+
+        say(spokenSummary)
+        listen()
+    }
+
     fun destroy() {
         scope.cancel()
         speech.destroy()
         listener.destroy()
+        feedback.release()
         isRunning = false
     }
 }

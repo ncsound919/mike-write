@@ -85,4 +85,33 @@ class SettingsStore(context: Context) {
     var readingTheme: String
         get() = prefs.getString("reading_theme", "Midnight") ?: "Midnight"
         set(value) = prefs.edit().putString("reading_theme", value).apply()
+
+    // --- Unified Automations ("Just Works" Pipeline) ---
+    var autoEditorialPipeline: Boolean
+        get() = prefs.getBoolean("auto_editorial_pipeline", true)
+        set(value) = prefs.edit().putBoolean("auto_editorial_pipeline", value).apply()
+
+    var autoWeaveTimeline: Boolean
+        get() = prefs.getBoolean("auto_weave_timeline", true)
+        set(value) = prefs.edit().putBoolean("auto_weave_timeline", value).apply()
+
+    var autoGapAuditing: Boolean
+        get() = prefs.getBoolean("auto_gap_auditing", true)
+        set(value) = prefs.edit().putBoolean("auto_gap_auditing", value).apply()
+
+    var autoVoiceHarmonizing: Boolean
+        get() = prefs.getBoolean("auto_voice_harmonizing", true)
+        set(value) = prefs.edit().putBoolean("auto_voice_harmonizing", value).apply()
+
+    var autoAdaptivePacing: Boolean
+        get() = prefs.getBoolean("auto_adaptive_pacing", true)
+        set(value) = prefs.edit().putBoolean("auto_adaptive_pacing", value).apply()
+
+    var smartAutoSave: Boolean
+        get() = prefs.getBoolean("smart_auto_save", true)
+        set(value) = prefs.edit().putBoolean("smart_auto_save", value).apply()
+
+    var hasCompletedTour: Boolean
+        get() = prefs.getBoolean("has_completed_tour", false)
+        set(value) = prefs.edit().putBoolean("has_completed_tour", value).apply()
 }

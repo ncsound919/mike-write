@@ -40,6 +40,7 @@ import com.example.data.SettingsStore
 import com.example.loop.VoiceLoopController
 import com.example.speech.AndroidSttEngine
 import com.example.speech.SpeechEngine
+import com.example.ui.components.OnboardingTourGuideDialog
 import com.example.ui.theme.*
 
 class MainActivity : ComponentActivity() {
@@ -137,6 +138,7 @@ fun MainAppHost(
     }
 
     var hasConsented by remember { mutableStateOf(controller.settings.hasConsentedToAudioProcessing) }
+    var showTourGuide by remember { mutableStateOf(!controller.settings.hasCompletedTour) }
 
     LaunchedEffect(Unit) {
         if (!hasAudioPermission) {
@@ -318,6 +320,17 @@ fun MainAppHost(
                     )
                 }
             }
+        }
+
+        if (showTourGuide) {
+            OnboardingTourGuideDialog(
+                controller = controller,
+                fontScale = controller.settings.fontSizeScale,
+                onDismiss = {
+                    showTourGuide = false
+                    controller.settings.hasCompletedTour = true
+                }
+            )
         }
     }
 }

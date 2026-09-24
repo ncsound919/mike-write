@@ -1,9 +1,16 @@
 package com.example.data
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
-@Entity(tableName = "chapters")
+@Entity(
+    tableName = "chapters",
+    indices = [
+        Index(value = ["orderIndex"]),
+        Index(value = ["title"])
+    ]
+)
 data class ChapterEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val title: String,

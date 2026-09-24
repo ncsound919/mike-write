@@ -7,6 +7,7 @@ plugins {
   alias(libs.plugins.roborazzi)
   alias(libs.plugins.secrets)
   alias(libs.plugins.google.services)
+  jacoco
 }
 
 android {
@@ -46,7 +47,10 @@ android {
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
       signingConfig = signingConfigs.getByName("release")
     }
-    debug { signingConfig = signingConfigs.getByName("debugConfig") }
+    debug {
+      signingConfig = signingConfigs.getByName("debugConfig")
+      enableUnitTestCoverage = true
+    }
   }
   compileOptions {
     sourceCompatibility = JavaVersion.VERSION_11
@@ -56,7 +60,18 @@ android {
     compose = true
     buildConfig = true
   }
-  testOptions { unitTests { isIncludeAndroidResources = true } }
+  testOptions {
+    unitTests {
+      isIncludeAndroidResources = true
+      isReturnDefaultValues = true
+      all {
+        it.configure<JacocoTaskExtension> {
+          isIncludeNoLocationClasses = true
+          excludes = listOf("jdk.internal.*")
+        }
+      }
+    }
+  }
   dependenciesInfo {
     includeInApk = false
     includeInBundle = true
@@ -142,3 +157,38 @@ dependencies {
   "ksp"(libs.androidx.room.compiler)
   "ksp"(libs.moshi.kotlin.codegen)
 }
+
+tasks.register<JacocoReport>("jacocoTestReport") {
+  dependsOn("testDebugUnitTest")
+  reports {
+    xml.required.set(true)
+    html.required.set(true)
+    csv.required.set(true)
+    html.outputLocation.set(layout.buildDirectory.dir("reports/jacocoHtml"))
+    csv.outputLocation.set(layout.buildDirectory.file("reports/jacoco.csv"))
+  }
+  val fileFilter = listOf(
+    "**/R.class",
+    "**/R$*.class",
+    "**/BuildConfig.*",
+    "**/Manifest*.*",
+    "**/*Test*.*",
+    "android/**/*.*",
+    "androidx/**/*.*",
+    "**/*ComposableSingletons*.*"
+  )
+  val kotlinClasses = fileTree("${project.layout.buildDirectory.get()}/intermediates/built_in_kotlinc/debug/compileDebugKotlin/classes") {
+    exclude(fileFilter)
+  }
+  val javaClasses = fileTree("${project.layout.buildDirectory.get()}/intermediates/javac/debug/compileDebugJavaWithJavac/classes") {
+    exclude(fileFilter)
+  }
+  val mainSrc = "${project.projectDir}/src/main/java"
+
+  sourceDirectories.setFrom(files(mainSrc))
+  classDirectories.setFrom(files(kotlinClasses, javaClasses))
+  executionData.setFrom(fileTree(project.layout.buildDirectory.get()) {
+    include("outputs/unit_test_code_coverage/debugUnitTest/testDebugUnitTest.exec")
+  })
+}
+

@@ -1,0 +1,204 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 5,
+    "identityHash": "500219111e5de206bce8c114f5b5808e",
+    "entities": [
+      {
+        "tableName": "memories",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `createdAt` INTEGER NOT NULL, `transcript` TEXT NOT NULL, `audioPath` TEXT, `chapter` TEXT, `approved` INTEGER NOT NULL, `prompt` TEXT, `storyArc` TEXT, `reflection` TEXT, `charactersAndPerspectives` TEXT, `sensoryDetails` TEXT, `writingTip` TEXT, `formattedProse` TEXT, `passageTitle` TEXT, `emotionalTone` TEXT, `isAutoChapterCreated` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "transcript",
+            "columnName": "transcript",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "audioPath",
+            "columnName": "audioPath",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "chapter",
+            "columnName": "chapter",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "approved",
+            "columnName": "approved",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "prompt",
+            "columnName": "prompt",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "storyArc",
+            "columnName": "storyArc",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "reflection",
+            "columnName": "reflection",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "charactersAndPerspectives",
+            "columnName": "charactersAndPerspectives",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "sensoryDetails",
+            "columnName": "sensoryDetails",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "writingTip",
+            "columnName": "writingTip",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "formattedProse",
+            "columnName": "formattedProse",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "passageTitle",
+            "columnName": "passageTitle",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "emotionalTone",
+            "columnName": "emotionalTone",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "isAutoChapterCreated",
+            "columnName": "isAutoChapterCreated",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_memories_chapter",
+            "unique": false,
+            "columnNames": [
+              "chapter"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_memories_chapter` ON `${TABLE_NAME}` (`chapter`)"
+          },
+          {
+            "name": "index_memories_createdAt",
+            "unique": false,
+            "columnNames": [
+              "createdAt"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_memories_createdAt` ON `${TABLE_NAME}` (`createdAt`)"
+          }
+        ]
+      },
+      {
+        "tableName": "chapters",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `title` TEXT NOT NULL, `description` TEXT NOT NULL, `orderIndex` INTEGER NOT NULL, `targetWordCount` INTEGER NOT NULL, `status` TEXT NOT NULL, `createdAt` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "description",
+            "columnName": "description",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "orderIndex",
+            "columnName": "orderIndex",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "targetWordCount",
+            "columnName": "targetWordCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_chapters_orderIndex",
+            "unique": false,
+            "columnNames": [
+              "orderIndex"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_chapters_orderIndex` ON `${TABLE_NAME}` (`orderIndex`)"
+          },
+          {
+            "name": "index_chapters_title",
+            "unique": false,
+            "columnNames": [
+              "title"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_chapters_title` ON `${TABLE_NAME}` (`title`)"
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '500219111e5de206bce8c114f5b5808e')"
+    ]
+  }
+}

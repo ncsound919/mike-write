@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [Memory::class, ChapterEntity::class], version = 4, exportSchema = true)
+@Database(entities = [Memory::class, ChapterEntity::class], version = 5, exportSchema = true)
 abstract class MikeWriteDatabase : RoomDatabase() {
     abstract fun memoryDao(): MemoryDao
     abstract fun chapterDao(): ChapterDao
@@ -63,6 +63,17 @@ abstract class MikeWriteDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                try {
+                    db.execSQL("CREATE INDEX IF NOT EXISTS `index_memories_chapter` ON `memories` (`chapter`)")
+                    db.execSQL("CREATE INDEX IF NOT EXISTS `index_memories_createdAt` ON `memories` (`createdAt`)")
+                    db.execSQL("CREATE INDEX IF NOT EXISTS `index_chapters_orderIndex` ON `chapters` (`orderIndex`)")
+                    db.execSQL("CREATE INDEX IF NOT EXISTS `index_chapters_title` ON `chapters` (`title`)")
+                } catch (ignored: Exception) {}
+            }
+        }
+
         fun getInstance(context: Context): MikeWriteDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -70,7 +81,8 @@ abstract class MikeWriteDatabase : RoomDatabase() {
                     MikeWriteDatabase::class.java,
                     "mikewrite.db"
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                .fallbackToDestructiveMigrationOnDowngrade(dropAllTables = true)
                 .build()
                 .also { INSTANCE = it }
             }

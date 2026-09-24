@@ -1,8 +1,12 @@
 package com.example.buddy
 
+import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.*
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -31,9 +35,13 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -45,7 +53,9 @@ import com.example.loop.VoiceLoopController
 import com.example.ui.components.AudiobookPlayerBar
 import com.example.ui.components.ChapterSwitcherDialog
 import com.example.ui.components.ExportChapterDialog
+import com.example.ui.components.EyeGazeDwellCard
 import com.example.ui.components.SoundWaveVisualizer
+import com.example.ui.components.UnifiedAutomationBar
 import com.example.ui.theme.*
 import kotlinx.coroutines.launch
 
@@ -55,6 +65,8 @@ fun BuddyScreen(
     memories: List<Memory>,
     onOpenSettings: () -> Unit
 ) {
+    val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
     val loopState by VoiceLoopBus.state.collectAsState()
     val lastSpoken by VoiceLoopBus.lastSpoken.collectAsState()
     val lastRecognized by VoiceLoopBus.lastRecognized.collectAsState()
@@ -64,16 +76,25 @@ fun BuddyScreen(
     // Dynamic Font Scaling State for Seniors
     var fontScale by remember { mutableStateOf(controller.settings.fontSizeScale) }
 
-    // Breathing pulsation for listening & speaking
-    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+    // Multi-layer breathing pulsation for voice listening & speaking
+    val infiniteTransition = rememberInfiniteTransition(label = "pulse_anim")
     val pulseScale by infiniteTransition.animateFloat(
         initialValue = 1.0f,
-        targetValue = 1.15f,
+        targetValue = 1.14f,
         animationSpec = infiniteRepeatable(
-            animation = tween(1200, easing = FastOutSlowInEasing),
+            animation = tween(1300, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
         label = "scale"
+    )
+    val outerGlowAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.25f,
+        targetValue = 0.65f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1600, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "glowAlpha"
     )
 
     val currentChapter = controller.settings.currentChapter
@@ -127,17 +148,17 @@ fun BuddyScreen(
         }
     }
 
-    // Aesthetic color state based on engine loop
+    // Aesthetic color and icon state based on engine loop
     val (statusLabel, statusColor, statusBg, statusIcon) = when (val s = loopState) {
-        is LoopState.Idle -> Quadruple("READY", AmberGold, DarkNavySurface, Icons.Default.MicNone)
-        is LoopState.Listening -> Quadruple("LISTENING…", EmeraldVoice, EmeraldDark, Icons.Default.GraphicEq)
-        is LoopState.Speaking -> Quadruple("SPEAKING", SkyBlue, MidnightCard, Icons.AutoMirrored.Filled.VolumeUp)
+        is LoopState.Idle -> Quadruple("READY TO WRITE", AmberGold, DarkNavySurface, Icons.Default.MicNone)
+        is LoopState.Listening -> Quadruple("LISTENING TO YOU…", EmeraldVoice, EmeraldDark, Icons.Default.GraphicEq)
+        is LoopState.Speaking -> Quadruple("READING ALOUD", SkyBlue, SapphireDark, Icons.AutoMirrored.Filled.VolumeUp)
         is LoopState.Recording -> Quadruple("RECORDING MEMORY", CrimsonRecord, CrimsonDark, Icons.Default.FiberManualRecord)
-        is LoopState.Processing -> Quadruple("THINKING & ANALYZING…", AmberGoldLight, MidnightCard, Icons.Default.AutoAwesome)
-        is LoopState.Error -> Quadruple("ERROR", CrimsonRecord, CrimsonDark, Icons.Default.Warning)
+        is LoopState.Processing -> Quadruple("THINKING & POLISHING…", AmberGoldLight, DarkNavySurface, Icons.Default.AutoAwesome)
+        is LoopState.Error -> Quadruple("NOTICE", CrimsonRecord, CrimsonDark, Icons.Default.Warning)
     }
 
-    val animatedBg by animateColorAsState(targetValue = statusBg, label = "bgColor")
+    val animatedBg by animateColorAsState(targetValue = statusBg, animationSpec = tween(400), label = "bgColor")
 
     val displayedMemories = if (filterByCurrentChapterOnly) {
         memories.filter { it.chapter.equals(currentChapter, ignoreCase = true) }
@@ -145,7 +166,17 @@ fun BuddyScreen(
         memories
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    val totalWords = remember(memories) {
+        memories.sumOf {
+            (it.formattedProse ?: it.transcript).split(Regex("\\s+")).count { w -> w.isNotBlank() }
+        }
+    }
+    val currentChapterWords = remember(memories, currentChapter) {
+        memories.filter { it.chapter.equals(currentChapter, ignoreCase = true) }
+            .sumOf { (it.formattedProse ?: it.transcript).split(Regex("\\s+")).count { w -> w.isNotBlank() } }
+    }
+
+    Box(modifier = Modifier.fillMaxSize().background(DeepNavy)) {
         Scaffold(
             containerColor = DeepNavy,
             topBar = {
@@ -153,7 +184,7 @@ fun BuddyScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .windowInsetsPadding(WindowInsets.statusBars)
-                        .padding(horizontal = 16.dp, vertical = 10.dp)
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -161,19 +192,30 @@ fun BuddyScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column {
-                            Text(
-                                text = "MIKE WRITE",
-                                style = MaterialTheme.typography.titleLarge.copy(
-                                    fontWeight = FontWeight.Black,
-                                    letterSpacing = 2.sp,
-                                    color = AmberGold
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .clip(CircleShape)
+                                        .background(AmberGold)
                                 )
-                            )
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    text = "MIKE WRITE",
+                                    style = MaterialTheme.typography.titleLarge.copy(
+                                        fontFamily = FontFamily.Serif,
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 1.5.sp,
+                                        color = AmberGold
+                                    )
+                                )
+                            }
+                            Spacer(Modifier.height(3.dp))
                             // Clickable active chapter badge
                             Surface(
                                 shape = RoundedCornerShape(8.dp),
                                 color = MidnightCard,
-                                border = androidx.compose.foundation.BorderStroke(1.dp, AmberGold.copy(alpha = 0.5f)),
+                                border = BorderStroke(1.dp, AmberGold.copy(alpha = 0.5f)),
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(8.dp))
                                     .clickable { showChapterSwitcher = true }
@@ -216,7 +258,7 @@ fun BuddyScreen(
                             Surface(
                                 shape = RoundedCornerShape(12.dp),
                                 color = MidnightCard,
-                                border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle),
+                                border = BorderStroke(1.dp, BorderSubtle),
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(12.dp))
                                     .clickable {
@@ -231,7 +273,7 @@ fun BuddyScreen(
                                     .testTag("text_size_stepper_button")
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
@@ -254,10 +296,11 @@ fun BuddyScreen(
                                 }
                             }
 
+                            // Input Mode Selector Pill
                             Surface(
                                 shape = RoundedCornerShape(12.dp),
                                 color = MidnightCard,
-                                border = androidx.compose.foundation.BorderStroke(1.dp, if (activeInputMode != "Voice Loop (Always Listening)") AmberGold else BorderSubtle),
+                                border = BorderStroke(1.dp, if (activeInputMode != "Voice Loop (Always Listening)") AmberGold else BorderSubtle),
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(12.dp))
                                     .clickable {
@@ -274,7 +317,7 @@ fun BuddyScreen(
                                     .testTag("input_mode_stepper_button")
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
@@ -303,20 +346,22 @@ fun BuddyScreen(
                                 }
                             }
 
+                            // Studio / Caregiver Hub Button
                             FilledTonalButton(
                                 onClick = onOpenSettings,
                                 colors = ButtonDefaults.filledTonalButtonColors(
                                     containerColor = MidnightCard,
                                     contentColor = OffWhiteText
                                 ),
+                                shape = RoundedCornerShape(12.dp),
                                 modifier = Modifier.testTag("settings_button"),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 7.dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Settings,
                                     contentDescription = "Settings",
                                     tint = AmberGold,
-                                    modifier = Modifier.size(18.dp)
+                                    modifier = Modifier.size(17.dp)
                                 )
                                 Spacer(Modifier.width(6.dp))
                                 Text(
@@ -335,22 +380,22 @@ fun BuddyScreen(
                     .fillMaxSize()
                     .padding(innerPadding)
                     .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 18.dp, vertical = 6.dp),
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 // Hero Book Cover & Manuscript Stats Banner
                 Card(
                     shape = RoundedCornerShape(22.dp),
                     colors = CardDefaults.cardColors(containerColor = DarkNavySurface),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle),
+                    border = BorderStroke(1.2.dp, BorderSubtle),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(bottom = 16.dp)
+                        .padding(bottom = 14.dp)
                 ) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(125.dp)
+                            .height(130.dp)
                     ) {
                         Image(
                             painter = painterResource(id = com.example.R.drawable.memoir_book_hero_1789952367883),
@@ -358,14 +403,14 @@ fun BuddyScreen(
                             contentScale = ContentScale.Crop,
                             modifier = Modifier
                                 .fillMaxSize()
-                                .alpha(0.50f)
+                                .alpha(0.45f)
                         )
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .background(
                                     Brush.verticalGradient(
-                                        colors = listOf(Color.Transparent, DarkNavySurface)
+                                        colors = listOf(Color.Transparent, DarkNavySurface.copy(alpha = 0.95f))
                                     )
                                 )
                         )
@@ -374,68 +419,91 @@ fun BuddyScreen(
                                 .align(Alignment.BottomStart)
                                 .padding(14.dp)
                         ) {
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = AmberGold.copy(alpha = 0.25f),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, AmberGold.copy(alpha = 0.6f))
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = "LIFETIME MEMOIR • ${memories.size} PASSAGES TRANSCRIBED",
-                                    fontSize = (10 * fontScale).sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = AmberGold,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                )
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = AmberGold.copy(alpha = 0.25f),
+                                    border = BorderStroke(1.dp, AmberGold.copy(alpha = 0.6f))
+                                ) {
+                                    Text(
+                                        text = "MEMOIR STUDIO",
+                                        fontSize = (10 * fontScale).sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = AmberGold,
+                                        letterSpacing = 1.sp,
+                                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.5.dp)
+                                    )
+                                }
+
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = MidnightCard.copy(alpha = 0.8f)
+                                ) {
+                                    Text(
+                                        text = "$totalWords words • ${memories.size} passages",
+                                        fontSize = (10 * fontScale).sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = OffWhiteText,
+                                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.5.dp)
+                                    )
+                                }
                             }
+
                             Spacer(Modifier.height(4.dp))
                             Text(
                                 text = controller.settings.bookTitle,
-                                fontSize = (19 * fontScale).sp,
-                                fontWeight = FontWeight.Bold,
-                                color = OffWhiteText
+                                style = MaterialTheme.typography.titleLarge.copy(
+                                    fontFamily = FontFamily.Serif,
+                                    fontWeight = FontWeight.Bold,
+                                    color = OffWhiteText
+                                ),
+                                fontSize = (19 * fontScale).sp
                             )
                             Text(
                                 text = "By ${controller.settings.authorName}",
-                                fontSize = (12 * fontScale).sp,
-                                color = LightGrayMuted
+                                style = MaterialTheme.typography.bodySmall.copy(color = LightGrayMuted),
+                                fontSize = (12 * fontScale).sp
                             )
                         }
                     }
                 }
 
-                // Main Big Status Card with Embedded SoundWaveVisualizer
+                // Main Big Voice Companion Card with Embedded SoundWaveVisualizer
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(28.dp))
+                        .clip(RoundedCornerShape(26.dp))
                         .background(
                             Brush.verticalGradient(
                                 listOf(animatedBg, DarkNavySurface)
                             )
                         )
-                        .border(2.dp, statusColor.copy(alpha = 0.6f), RoundedCornerShape(28.dp)),
+                        .border(2.dp, statusColor.copy(alpha = 0.7f), RoundedCornerShape(26.dp)),
                     colors = CardDefaults.cardColors(containerColor = Color.Transparent)
                 ) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(22.dp),
+                            .padding(20.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         // Status Badge
                         Surface(
                             shape = CircleShape,
-                            color = statusColor.copy(alpha = 0.2f),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, statusColor),
-                            modifier = Modifier.padding(bottom = 16.dp)
+                            color = statusColor.copy(alpha = 0.18f),
+                            border = BorderStroke(1.dp, statusColor),
+                            modifier = Modifier.padding(bottom = 14.dp)
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
                             ) {
                                 Box(
                                     modifier = Modifier
-                                        .size(10.dp)
+                                        .size(9.dp)
                                         .clip(CircleShape)
                                         .background(statusColor)
                                 )
@@ -443,16 +511,17 @@ fun BuddyScreen(
                                 Text(
                                     text = statusLabel,
                                     color = statusColor,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = (13 * fontScale).sp,
-                                    letterSpacing = 1.5.sp
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = (12 * fontScale).sp,
+                                    letterSpacing = 1.3.sp
                                 )
                             }
                         }
 
-                        // Interactive Microphone / Voice Orb with real RMS level
-                        val animatedScale = if (loopState is LoopState.Listening || loopState is LoopState.Recording) {
-                            (pulseScale + (audioLevel * 0.35f)).coerceIn(1.0f, 1.5f)
+                        // Luminous Concentric Voice Orb
+                        val isListeningOrRecording = loopState is LoopState.Listening || loopState is LoopState.Recording
+                        val animatedScale = if (isListeningOrRecording) {
+                            (pulseScale + (audioLevel * 0.35f)).coerceIn(1.0f, 1.45f)
                         } else 1.0f
 
                         val isOrbScanned = activeInputMode == "Switch Scan Assist" && scanIndex == 0
@@ -460,39 +529,62 @@ fun BuddyScreen(
                         Box(
                             contentAlignment = Alignment.Center,
                             modifier = Modifier
-                                .size(125.dp)
+                                .size(136.dp)
                                 .scale(animatedScale)
-                                .clip(CircleShape)
-                                .background(
-                                    Brush.radialGradient(
-                                        listOf(statusColor.copy(alpha = 0.4f), Color.Transparent)
+                        ) {
+                            // Outer ambient aura ring
+                            if (isListeningOrRecording) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(134.dp)
+                                        .clip(CircleShape)
+                                        .background(statusColor.copy(alpha = outerGlowAlpha * 0.35f))
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .size(122.dp)
+                                        .clip(CircleShape)
+                                        .background(statusColor.copy(alpha = outerGlowAlpha * 0.5f))
+                                )
+                            }
+
+                            // Inner Core Voice Orb Button
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier
+                                    .size(106.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        Brush.radialGradient(
+                                            listOf(statusColor.copy(alpha = 0.45f), MidnightCard)
+                                        )
                                     )
-                                )
-                                .border(
-                                    width = if (isOrbScanned) 5.dp else 3.dp,
-                                    color = if (isOrbScanned) AmberGold else statusColor,
-                                    shape = CircleShape
-                                )
-                                .clickable(
-                                    role = Role.Button,
-                                    onClickLabel = "Toggle voice recording"
-                                ) {
-                                    scope.launch {
-                                        if (loopState is LoopState.Recording || controller.isRecording) {
-                                            controller.finishRecording()
-                                        } else {
-                                            controller.beginRecording()
+                                    .border(
+                                        width = if (isOrbScanned) 5.dp else 3.dp,
+                                        color = if (isOrbScanned) AmberGold else statusColor,
+                                        shape = CircleShape
+                                    )
+                                    .clickable(
+                                        role = Role.Button,
+                                        onClickLabel = "Toggle voice recording"
+                                    ) {
+                                        scope.launch {
+                                            if (loopState is LoopState.Recording || controller.isRecording) {
+                                                controller.finishRecording()
+                                            } else {
+                                                controller.beginRecording()
+                                            }
                                         }
                                     }
-                                }
-                                .testTag("big_voice_orb_button")
-                        ) {
-                            Icon(
-                                imageVector = statusIcon,
-                                contentDescription = "Voice State Icon",
-                                tint = OffWhiteText,
-                                modifier = Modifier.size(52.dp)
-                            )
+                                    .testTag("big_voice_orb_button")
+                            ) {
+                                Icon(
+                                    imageVector = statusIcon,
+                                    contentDescription = "Voice State Icon",
+                                    tint = OffWhiteText,
+                                    modifier = Modifier.size(46.dp)
+                                )
+                            }
                         }
 
                         Spacer(Modifier.height(14.dp))
@@ -501,7 +593,7 @@ fun BuddyScreen(
                         SoundWaveVisualizer(
                             state = loopState,
                             audioLevel = audioLevel,
-                            modifier = Modifier.padding(horizontal = 12.dp)
+                            modifier = Modifier.padding(horizontal = 8.dp)
                         )
 
                         Spacer(Modifier.height(12.dp))
@@ -509,26 +601,27 @@ fun BuddyScreen(
                         // Spoken or Listening Headline
                         val displayPrompt = when (val s = loopState) {
                             is LoopState.Speaking -> s.text
-                            is LoopState.Listening -> lastSpoken.ifBlank { "Listening for your voice. Say 'record' or 'help'..." }
+                            is LoopState.Listening -> lastSpoken.ifBlank { "Listening for your voice. Say 'record' or 'prompt me'..." }
                             is LoopState.Recording -> {
                                 if (s.partialText.isNotBlank()) "\"${s.partialText}\""
-                                else "Listening to your story... (Say 'done' or tap below when finished)"
+                                else "Listening to your memory... (Say 'done' or tap below when finished)"
                             }
                             is LoopState.Processing -> s.task
-                            is LoopState.Idle -> "Tap or say 'Record' to dictate your memory."
+                            is LoopState.Idle -> "Tap microphone or say 'Record' to dictate a memory."
                             is LoopState.Error -> s.message
                         }
 
                         Text(
                             text = displayPrompt,
                             style = MaterialTheme.typography.headlineSmall.copy(
+                                fontFamily = FontFamily.Serif,
                                 color = OffWhiteText,
                                 fontWeight = FontWeight.Bold,
-                                lineHeight = (30 * fontScale).sp,
+                                lineHeight = (28 * fontScale).sp,
                                 textAlign = TextAlign.Center
                             ),
-                            fontSize = (20 * fontScale).sp,
-                            modifier = Modifier.padding(horizontal = 8.dp)
+                            fontSize = (19 * fontScale).sp,
+                            modifier = Modifier.padding(horizontal = 6.dp)
                         )
 
                         // Explicit high-visibility button while recording
@@ -542,13 +635,16 @@ fun BuddyScreen(
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = AmberGold),
                                 shape = RoundedCornerShape(24.dp),
-                                modifier = Modifier.testTag("finish_recording_button")
+                                modifier = Modifier
+                                    .fillMaxWidth(0.9f)
+                                    .height(52.dp)
+                                    .testTag("finish_recording_button")
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.CheckCircle,
                                     contentDescription = "Catch Memory",
                                     tint = DeepNavy,
-                                    modifier = Modifier.size(20.dp)
+                                    modifier = Modifier.size(22.dp)
                                 )
                                 Spacer(Modifier.width(8.dp))
                                 Text(
@@ -560,16 +656,20 @@ fun BuddyScreen(
                             }
                         }
 
-                        AnimatedVisibility(visible = lastRecognized.isNotBlank()) {
+                        AnimatedVisibility(
+                            visible = lastRecognized.isNotBlank(),
+                            enter = fadeIn(),
+                            exit = fadeOut()
+                        ) {
                             Column(
                                 horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier.padding(top = 14.dp)
+                                modifier = Modifier.padding(top = 12.dp)
                             ) {
                                 Text(
-                                    text = "Last heard:",
-                                    style = MaterialTheme.typography.labelMedium.copy(color = LightGrayMuted)
+                                    text = "Last recognized speech:",
+                                    style = MaterialTheme.typography.labelSmall.copy(color = LightGrayMuted)
                                 )
-                                Spacer(Modifier.height(4.dp))
+                                Spacer(Modifier.height(3.dp))
                                 Text(
                                     text = "\"$lastRecognized\"",
                                     style = MaterialTheme.typography.bodyLarge.copy(
@@ -577,7 +677,7 @@ fun BuddyScreen(
                                         fontWeight = FontWeight.Medium,
                                         textAlign = TextAlign.Center
                                     ),
-                                    fontSize = (15 * fontScale).sp
+                                    fontSize = (14 * fontScale).sp
                                 )
                             }
                         }
@@ -586,16 +686,24 @@ fun BuddyScreen(
 
                 Spacer(Modifier.height(14.dp))
 
+                // Unified "Just Works" Automation Monitor Bar
+                UnifiedAutomationBar(
+                    controller = controller,
+                    fontScale = fontScale,
+                    modifier = Modifier.padding(horizontal = 2.dp)
+                )
+
+                Spacer(Modifier.height(14.dp))
+
                 // Real Active Input Mode Accessibility Banner
                 if (activeInputMode == "Switch Scan Assist") {
                     Surface(
                         shape = RoundedCornerShape(14.dp),
                         color = AmberGold.copy(alpha = 0.15f),
-                        border = androidx.compose.foundation.BorderStroke(1.5.dp, AmberGold),
+                        border = BorderStroke(1.5.dp, AmberGold),
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable {
-                                // Tapping banner activates currently scanned target
                                 scope.launch {
                                     when (scanIndex) {
                                         0 -> {
@@ -648,7 +756,7 @@ fun BuddyScreen(
                     Surface(
                         shape = RoundedCornerShape(14.dp),
                         color = SkyBlue.copy(alpha = 0.15f),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, SkyBlue.copy(alpha = 0.6f)),
+                        border = BorderStroke(1.dp, SkyBlue.copy(alpha = 0.6f)),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(
@@ -666,11 +774,116 @@ fun BuddyScreen(
                         }
                     }
                     Spacer(Modifier.height(14.dp))
+                } else if (activeInputMode == "Eye Gaze Dwell") {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = EmeraldDark,
+                            border = BorderStroke(1.5.dp, EmeraldVoice),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.Visibility, contentDescription = null, tint = EmeraldVoice, modifier = Modifier.size(22.dp))
+                                Spacer(Modifier.width(10.dp))
+                                Column {
+                                    Text(
+                                        text = "EYE GAZE DWELL ACTIVE",
+                                        color = EmeraldVoice,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = (13 * fontScale).sp
+                                    )
+                                    Text(
+                                        text = "Hover over any target for 1.8 seconds to trigger without clicking",
+                                        color = OffWhiteText.copy(alpha = 0.85f),
+                                        fontSize = (11 * fontScale).sp
+                                    )
+                                }
+                            }
+                        }
+
+                        // Big Eye Gaze Dwell Targets for Paralysis & Hands-Free Use
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            EyeGazeDwellCard(
+                                title = if (loopState is LoopState.Recording || controller.isRecording) "Stop / Save" else "Record Story",
+                                subtitle = if (loopState is LoopState.Recording || controller.isRecording) "Finish passage" else "Dictate memory",
+                                icon = if (loopState is LoopState.Recording || controller.isRecording) Icons.Default.CheckCircle else Icons.Default.Mic,
+                                accentColor = if (loopState is LoopState.Recording || controller.isRecording) EmeraldVoice else CrimsonRecord,
+                                testTag = "dwell_record_target",
+                                modifier = Modifier.weight(1f),
+                                onDwellTriggered = {
+                                    scope.launch {
+                                        if (loopState is LoopState.Recording || controller.isRecording) {
+                                            controller.finishRecording()
+                                        } else {
+                                            controller.beginRecording()
+                                        }
+                                    }
+                                }
+                            )
+
+                            EyeGazeDwellCard(
+                                title = "Interview Question",
+                                subtitle = "Ask me a prompt",
+                                icon = Icons.Default.AutoAwesome,
+                                accentColor = AmberGold,
+                                testTag = "dwell_prompt_target",
+                                modifier = Modifier.weight(1f),
+                                onDwellTriggered = {
+                                    scope.launch {
+                                        controller.handleUtterance("Prompt me")
+                                    }
+                                }
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            EyeGazeDwellCard(
+                                title = "Review Aloud",
+                                subtitle = "Listen to book",
+                                icon = Icons.AutoMirrored.Filled.VolumeUp,
+                                accentColor = SkyBlue,
+                                testTag = "dwell_review_target",
+                                modifier = Modifier.weight(1f),
+                                onDwellTriggered = {
+                                    scope.launch {
+                                        controller.handleUtterance("Review")
+                                    }
+                                }
+                            )
+
+                            EyeGazeDwellCard(
+                                title = "Readiness",
+                                subtitle = "Manuscript audit",
+                                icon = Icons.AutoMirrored.Filled.MenuBook,
+                                accentColor = AmberGoldLight,
+                                testTag = "dwell_readiness_target",
+                                modifier = Modifier.weight(1f),
+                                onDwellTriggered = {
+                                    scope.launch {
+                                        controller.handleUtterance("Readiness")
+                                    }
+                                }
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(14.dp))
                 }
 
                 // Audibly Navigable Voice Command Bar
                 Text(
-                    text = "VOICE COMMANDS YOU CAN SPEAK ANYTIME",
+                    text = "VOICE COMMANDS • SPEAK ANYTIME",
                     style = MaterialTheme.typography.labelMedium.copy(
                         color = LightGrayMuted,
                         fontWeight = FontWeight.Bold,
@@ -683,6 +896,7 @@ fun BuddyScreen(
 
                 val commandChips = listOf(
                     Triple("Record", "Start dictating", Icons.Default.Mic),
+                    Triple("Auto write", "Unified pipeline", Icons.Default.AutoAwesome),
                     Triple("Playback", "Hear live draft", Icons.Default.Hearing),
                     Triple("Auto sequence", "Timeline weaver", Icons.Default.Timeline),
                     Triple("Find gaps", "Missing stories", Icons.Default.Search),
@@ -726,7 +940,7 @@ fun BuddyScreen(
                             colors = CardDefaults.cardColors(
                                 containerColor = if (isScanned) AmberGold.copy(alpha = 0.25f) else MidnightCard
                             ),
-                            border = androidx.compose.foundation.BorderStroke(
+                            border = BorderStroke(
                                 width = if (isScanned) 2.5.dp else 1.dp,
                                 color = if (isScanned) AmberGold else BorderSubtle
                             )
@@ -760,7 +974,7 @@ fun BuddyScreen(
 
                 Spacer(Modifier.height(20.dp))
 
-                // Passages Section Header with Filter Chips
+                // Passages Section Header with Filter Chips & Actions
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -862,7 +1076,7 @@ fun BuddyScreen(
                     FilterChip(
                         selected = filterByCurrentChapterOnly,
                         onClick = { filterByCurrentChapterOnly = true },
-                        label = { Text("This Chapter Only", fontSize = 12.sp) },
+                        label = { Text("This Chapter Only ($currentChapterWords words)", fontSize = 12.sp) },
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = AmberGold,
                             selectedLabelColor = DeepNavy,
@@ -912,25 +1126,26 @@ fun BuddyScreen(
                     Column(
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        displayedMemories.take(8).forEach { mem ->
+                        displayedMemories.take(12).forEach { mem ->
                             val isExpanded = inspectingMemory?.id == mem.id
+                            val showRaw = showRawTranscriptMap[mem.id] ?: false
+                            val displayTitle = mem.passageTitle.orEmpty().ifBlank { "Passage in ${mem.chapter ?: "Book"}" }
+                            val displayText = if (showRaw) mem.transcript else (mem.formattedProse.orEmpty().ifBlank { mem.transcript })
+                            val wordCount = displayText.split(Regex("\\s+")).count { w -> w.isNotBlank() }
+                            val readingMinutes = (wordCount / 130).coerceAtLeast(1)
 
                             Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(20.dp))
                                     .border(
-                                        1.dp,
+                                        1.2.dp,
                                         if (isExpanded) AmberGold else BorderSubtle,
                                         RoundedCornerShape(20.dp)
                                     ),
                                 colors = CardDefaults.cardColors(containerColor = DarkNavySurface)
                             ) {
                                 Column(modifier = Modifier.padding(16.dp)) {
-                                    val showRaw = showRawTranscriptMap[mem.id] ?: false
-                                    val displayTitle = mem.passageTitle.orEmpty().ifBlank { "Passage in ${mem.chapter ?: "Book"}" }
-                                    val displayText = if (showRaw) mem.transcript else (mem.formattedProse.orEmpty().ifBlank { mem.transcript })
-
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -939,9 +1154,12 @@ fun BuddyScreen(
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text(
                                                 text = displayTitle,
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = (16 * fontScale).sp,
-                                                color = OffWhiteText
+                                                style = MaterialTheme.typography.titleMedium.copy(
+                                                    fontFamily = FontFamily.Serif,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = OffWhiteText
+                                                ),
+                                                fontSize = (16 * fontScale).sp
                                             )
                                             Spacer(Modifier.height(4.dp))
                                             Row(
@@ -957,6 +1175,18 @@ fun BuddyScreen(
                                                         color = AmberGold,
                                                         fontSize = 10.sp,
                                                         fontWeight = FontWeight.Bold,
+                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                    )
+                                                }
+
+                                                Surface(
+                                                    shape = RoundedCornerShape(6.dp),
+                                                    color = MidnightCard
+                                                ) {
+                                                    Text(
+                                                        text = "$wordCount words • ~$readingMinutes min",
+                                                        color = LightGrayMuted,
+                                                        fontSize = 10.sp,
                                                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                                     )
                                                 }
@@ -994,12 +1224,28 @@ fun BuddyScreen(
                                         }
 
                                         Row(verticalAlignment = Alignment.CenterVertically) {
+                                            // Copy to clipboard
+                                            IconButton(
+                                                onClick = {
+                                                    clipboardManager.setText(AnnotatedString(displayText))
+                                                    Toast.makeText(context, "Passage copied to clipboard", Toast.LENGTH_SHORT).show()
+                                                },
+                                                modifier = Modifier.size(34.dp).testTag("copy_memory_${mem.id}")
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.ContentCopy,
+                                                    contentDescription = "Copy passage",
+                                                    tint = LightGrayMuted,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            }
+
                                             // Story deconstruct button
                                             IconButton(
                                                 onClick = {
                                                     inspectingMemory = if (isExpanded) null else mem
                                                 },
-                                                modifier = Modifier.size(36.dp).testTag("inspect_memory_${mem.id}")
+                                                modifier = Modifier.size(34.dp).testTag("inspect_memory_${mem.id}")
                                             ) {
                                                 Icon(
                                                     imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.AutoStories,
@@ -1009,10 +1255,11 @@ fun BuddyScreen(
                                                 )
                                             }
 
+                                            // Play memory aloud
                                             IconButton(
                                                 onClick = {
                                                     scope.launch {
-                                                        controller.say("Memory: $displayText")
+                                                        controller.say("Passage: $displayText")
                                                     }
                                                 },
                                                 modifier = Modifier.size(36.dp).testTag("play_memory_${mem.id}")
@@ -1070,8 +1317,8 @@ fun BuddyScreen(
 
                                     Surface(
                                         shape = RoundedCornerShape(12.dp),
-                                        color = MidnightCard.copy(alpha = 0.6f),
-                                        border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle)
+                                        color = MidnightCard.copy(alpha = 0.65f),
+                                        border = BorderStroke(1.dp, BorderSubtle)
                                     ) {
                                         Text(
                                             text = displayText,
@@ -1174,6 +1421,14 @@ fun BuddyScreen(
                 controller.settings.speechRate = nextRate
                 controller.speech.setSpeechRate(nextRate)
             },
+            onRepeatPlayback = {
+                scope.launch {
+                    val currentText = (loopState as? LoopState.Speaking)?.text
+                    if (!currentText.isNullOrBlank()) {
+                        controller.say(currentText)
+                    }
+                }
+            },
             modifier = Modifier.align(Alignment.BottomCenter)
         )
     }
@@ -1229,7 +1484,7 @@ fun LiteraryElementBadge(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = color.copy(alpha = 0.08f)),
         shape = RoundedCornerShape(12.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, color.copy(alpha = 0.35f))
+        border = BorderStroke(1.dp, color.copy(alpha = 0.35f))
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
