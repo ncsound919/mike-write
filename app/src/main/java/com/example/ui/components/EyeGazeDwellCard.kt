@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.sp
 import com.example.ui.theme.*
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
@@ -67,11 +68,15 @@ fun EyeGazeDwellCard(
                 targetValue = 1f,
                 animationSpec = tween(durationMillis = dwellDurationMs.toInt(), easing = LinearEasing)
             )
-            // Trigger upon completion
-            onDwellTriggered()
+            // Trigger upon completion if coroutine is still active
+            if (isActive) {
+                onDwellTriggered()
+            }
             delay(300)
-            isDwellActive = false
-            progress.snapTo(0f)
+            if (isActive) {
+                isDwellActive = false
+                progress.snapTo(0f)
+            }
         }
     }
 

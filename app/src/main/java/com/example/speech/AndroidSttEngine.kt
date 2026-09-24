@@ -71,7 +71,11 @@ class AndroidSttEngine(private val context: Context) : ListeningEngine {
 
             if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY || error == SpeechRecognizer.ERROR_CLIENT) {
                 VoiceLoopBus.appendLog("STT: Recreating recognizer after busy/client error ($error)")
-                recreateRecognizer()
+                val fresh = recreateRecognizer()
+                if (fresh != null && !isIntentionalStop) {
+                    restartListening()
+                    return
+                }
             }
 
             // In continuous dictation mode, handle natural speech pauses and timeouts cleanly

@@ -72,6 +72,7 @@ object VoiceLoopBus {
         appendLog("Accessibility: $msg")
     }
 
+    @Synchronized
     fun appendLog(msg: String) {
         val current = _systemLogs.value.toMutableList()
         if (current.size > 50) current.removeAt(0)

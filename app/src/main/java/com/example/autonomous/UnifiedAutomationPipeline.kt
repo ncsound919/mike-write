@@ -54,66 +54,72 @@ object UnifiedAutomationPipeline {
         _isAutomating.value = true
         VoiceLoopBus.appendLog("Unified Automation Pipeline: Started execution for memory #${savedMemory.id}")
 
-        // 1. Timeline Weaving Analysis
-        val timelineAnalysis = if (settings.autoWeaveTimeline) {
-            AutonomousManuscriptWeaver.analyzeTimeline(allManuscriptMemories)
-        } else null
+        try {
+            // Minimum memory count before cross-manuscript analysis passes run
+            val hasSufficientMemories = allManuscriptMemories.size >= 3
 
-        // 2. Narrative Gap Auditing
-        val gapAudit = if (settings.autoGapAuditing) {
-            AutonomousExpansionEngine.auditManuscriptGaps(allManuscriptMemories)
-        } else null
+            // 1. Timeline Weaving Analysis
+            val timelineAnalysis = if (settings.autoWeaveTimeline && hasSufficientMemories) {
+                AutonomousManuscriptWeaver.analyzeTimeline(allManuscriptMemories)
+            } else null
 
-        // 3. Style & Voice Harmonization
-        val styleAudit = if (settings.autoVoiceHarmonizing) {
-            AutonomousStyleHarmonizer.auditStyleHealth(allManuscriptMemories)
-        } else null
+            // 2. Narrative Gap Auditing
+            val gapAudit = if (settings.autoGapAuditing && hasSufficientMemories) {
+                AutonomousExpansionEngine.auditManuscriptGaps(allManuscriptMemories)
+            } else null
 
-        // 4. Synthesize intelligent unified follow-up
-        val topPrompt = gapAudit?.topAutonomousPrompt
-        val inversions = timelineAnalysis?.inversionCount ?: 0
-        val gapsCount = gapAudit?.totalGapsFound ?: 0
-        val povStability = styleAudit?.povStabilityPercent ?: 100
-        val styleIssues = styleAudit?.detectedIssues?.size ?: 0
+            // 3. Style & Voice Harmonization
+            val styleAudit = if (settings.autoVoiceHarmonizing && hasSufficientMemories) {
+                AutonomousStyleHarmonizer.auditStyleHealth(allManuscriptMemories)
+            } else null
 
-        val unifiedPrompt = buildString {
-            // Mention chapter & author tip
-            append("Saved to ${savedMemory.chapter}. ")
-            if (!savedMemory.writingTip.isNullOrBlank()) {
-                append("Craft tip: ${savedMemory.writingTip} ")
-            }
+            // 4. Synthesize intelligent unified follow-up
+            val topPrompt = gapAudit?.topAutonomousPrompt
+            val inversions = timelineAnalysis?.inversionCount ?: 0
+            val gapsCount = gapAudit?.totalGapsFound ?: 0
+            val povStability = styleAudit?.povStabilityPercent ?: 100
+            val styleIssues = styleAudit?.detectedIssues?.size ?: 0
 
-            // Contextual bridge based on background automation findings
-            if (topPrompt != null && topPrompt.isNotBlank()) {
-                append("Next suggested memory: $topPrompt ")
-            } else if (inversions > 0) {
-                append("Timeline note: Detected $inversions scene sequence variations. ")
-            }
+            val unifiedPrompt = buildString {
+                // Mention chapter & author tip
+                append("Saved to ${savedMemory.chapter}. ")
+                if (!savedMemory.writingTip.isNullOrBlank()) {
+                    append("Craft tip: ${savedMemory.writingTip} ")
+                }
 
-            append("Say 'record' to continue, 'review' to listen, or 'next' to proceed.")
-        }.trim()
+                // Contextual bridge based on background automation findings
+                if (topPrompt != null && topPrompt.isNotBlank()) {
+                    append("Next suggested memory: $topPrompt ")
+                } else if (inversions > 0) {
+                    append("Timeline note: Detected $inversions scene sequence variations. ")
+                }
 
-        val result = AutomationExecutionResult(
-            memoryId = savedMemory.id,
-            chapter = savedMemory.chapter ?: "Early Days",
-            passageTitle = savedMemory.passageTitle ?: "Story Passage",
-            isAutoChapterCreated = savedMemory.isAutoChapterCreated,
-            timelineInversionsDetected = inversions,
-            manuscriptGapsCount = gapsCount,
-            topGapPrompt = topPrompt,
-            stylePovStability = povStability,
-            detectedStyleIssuesCount = styleIssues,
-            writingTip = savedMemory.writingTip ?: "Show details rather than just telling.",
-            nextUnifiedPrompt = unifiedPrompt
-        )
+                append("Say 'record' to continue, 'review' to listen, or 'next' to proceed.")
+            }.trim()
 
-        _lastExecution.value = result
-        _isAutomating.value = false
-        VoiceLoopBus.appendLog(
-            "Unified Automation Pipeline complete: Inversions=$inversions, Gaps=$gapsCount, POV=$povStability%"
-        )
+            val result = AutomationExecutionResult(
+                memoryId = savedMemory.id,
+                chapter = savedMemory.chapter ?: "Early Days",
+                passageTitle = savedMemory.passageTitle ?: "Story Passage",
+                isAutoChapterCreated = savedMemory.isAutoChapterCreated,
+                timelineInversionsDetected = inversions,
+                manuscriptGapsCount = gapsCount,
+                topGapPrompt = topPrompt,
+                stylePovStability = povStability,
+                detectedStyleIssuesCount = styleIssues,
+                writingTip = savedMemory.writingTip ?: "Show details rather than just telling.",
+                nextUnifiedPrompt = unifiedPrompt
+            )
 
-        return result
+            _lastExecution.value = result
+            VoiceLoopBus.appendLog(
+                "Unified Automation Pipeline complete: Inversions=$inversions, Gaps=$gapsCount, POV=$povStability%"
+            )
+
+            return result
+        } finally {
+            _isAutomating.value = false
+        }
     }
 
     fun clear() {

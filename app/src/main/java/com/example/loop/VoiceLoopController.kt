@@ -294,7 +294,7 @@ class VoiceLoopController(
         }
     }
 
-    private suspend fun handleUndo() {
+    private suspend fun handleUndo() = stateMutex.withLock {
         feedback.playFeedback(AudioHapticFeedback.Cue.ACTION_UNDONE)
         when {
             // Case 1: Pending unconfirmed draft exists -> discard it
@@ -342,14 +342,16 @@ class VoiceLoopController(
     private val stopPhraseRegex = Regex("(?i)\\b(that's it|that is all|that's all|all done|done|finished|stop recording|stop|finish|wrap up)\\b")
 
     suspend fun beginRecording() {
-        if (isRecording) {
-            finishRecording()
-            return
+        stateMutex.withLock {
+            if (isRecording) {
+                finishRecording()
+                return
+            }
+            isRecording = true
+            pendingTranscript = null
+            latestPartialText = null
+            isAwaitingConfirmation = false
         }
-        isRecording = true
-        pendingTranscript = null
-        latestPartialText = null
-        isAwaitingConfirmation = false
         listener.stop()
         speech.stop()
 
@@ -580,10 +582,17 @@ class VoiceLoopController(
                     )
                 } catch (e: Exception) {
                     VoiceLoopBus.appendLog("Auto-pipeline warning: ${e.message}")
-                    com.example.autonomous.UnifiedPipelineResult(
-                        chapterOrganized = finalChapter,
-                        chronologicalOrderFixed = false,
-                        voicePolished = false,
+                    com.example.autonomous.UnifiedAutomationPipeline.AutomationExecutionResult(
+                        memoryId = memoryWithId.id,
+                        chapter = finalChapter,
+                        passageTitle = memoryWithId.passageTitle ?: "Story Passage",
+                        isAutoChapterCreated = isAutoCreated,
+                        timelineInversionsDetected = 0,
+                        manuscriptGapsCount = 0,
+                        topGapPrompt = null,
+                        stylePovStability = 100,
+                        detectedStyleIssuesCount = 0,
+                        writingTip = elements.writingTip,
                         nextUnifiedPrompt = "Story saved to $finalChapter! Say record to continue or review to listen."
                     )
                 }
@@ -638,7 +647,7 @@ class VoiceLoopController(
         }
     }
 
-    suspend fun confirmDelete() {
+    suspend fun confirmDelete() = stateMutex.withLock {
         lastDiscardedTranscript = pendingTranscript
         lastSavedMemory = null
         pendingTranscript = null
