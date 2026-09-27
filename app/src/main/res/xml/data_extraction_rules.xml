@@ -5,9 +5,9 @@
 -->
 <data-extraction-rules>
     <cloud-backup>
+        <!-- sharedpref intentionally excluded: it holds the AI provider keys. -->
         <include domain="root" />
         <include domain="database" />
-        <include domain="sharedpref" />
     </cloud-backup>
     <!--
     <device-transfer>

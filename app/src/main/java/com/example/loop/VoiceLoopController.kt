@@ -1,7 +1,11 @@
 package com.example.loop
 
 import android.content.Context
+import com.example.ai.AiConfigProvider
+import com.example.ai.AiTextEngine
 import com.example.ai.Interviewer
+import com.example.ai.JevClient
+import com.example.ai.RewordingEngine
 import com.example.autonomous.AutonomousExpansionEngine
 import com.example.autonomous.AutonomousManuscriptWeaver
 import com.example.autonomous.AutonomousStyleHarmonizer
@@ -9,9 +13,11 @@ import com.example.data.Memory
 import com.example.data.MikeWriteDatabase
 import com.example.data.SettingsStore
 import com.example.feedback.AudioHapticFeedback
+import com.example.data.BookChapters
 import com.example.speech.Command
 import com.example.speech.CommandParser
 import com.example.speech.ListeningEngine
+import com.example.speech.RecordingStopDetector
 import com.example.speech.SpeechEngine
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.firstOrNull
@@ -28,6 +34,10 @@ class VoiceLoopController(
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     val feedback = AudioHapticFeedback(context)
+    val rewordEngine = RewordingEngine(
+        AiTextEngine { AiConfigProvider.from(settings) },
+        JevClient { AiConfigProvider.from(settings) }
+    )
     private val stateMutex = Mutex()
     @Volatile
     var isRunning: Boolean = false
@@ -35,6 +45,16 @@ class VoiceLoopController(
     @Volatile
     var isRecording: Boolean = false
         private set
+
+    /** True while the author has explicitly paused listening; nothing re-arms the mic. */
+    @Volatile
+    var isPaused: Boolean = false
+        private set
+
+    // finishRecording can be triggered concurrently (volume switch, tap, and the
+    // final STT result). Without this guard the same draft could be saved twice.
+    @Volatile
+    private var isFinalizingRecording: Boolean = false
 
     @Volatile
     private var lastPrompt: String = "Say record to dictate a story. Review to hear your book. Prompt me for an interview question. Or say breakdown to explore your story elements."
@@ -44,6 +64,15 @@ class VoiceLoopController(
     private var latestPartialText: String? = null
     @Volatile
     private var isAwaitingConfirmation: Boolean = false
+    // AI reword pending state
+    @Volatile
+    private var isAwaitingReword: Boolean = false
+    @Volatile
+    private var pendingRewordText: String? = null
+    @Volatile
+    private var pendingRewordMemoryId: Long? = null
+    @Volatile
+    private var pendingRewordIsDraft: Boolean = false
     @Volatile
     private var currentReviewIndex: Int = 0
     @Volatile
@@ -67,12 +96,17 @@ class VoiceLoopController(
         VoiceLoopBus.appendLog("Handling Switch Action: $action")
         when (action) {
             com.example.loop.AccessibilitySwitchAction.TOGGLE_RECORD_OR_CONFIRM -> {
-                if (isAwaitingConfirmation) {
+                if (isPaused) {
+                    resumeListening()
+                } else if (isAwaitingConfirmation) {
                     confirmSave()
                 } else if (isRecording) {
                     finishRecording()
+                } else if (listener.isListening) {
+                    // Already mid-turn; ignore extra presses.
                 } else {
-                    beginRecording()
+                    // Idle: this is the wake trigger for a voice-command turn.
+                    wakeListening()
                 }
             }
             com.example.loop.AccessibilitySwitchAction.STOP_OR_CANCEL -> {
@@ -109,12 +143,58 @@ class VoiceLoopController(
     fun stopEverything() {
         isRunning = false
         isRecording = false
+        isPaused = false
         latestPartialText = null
+        isAwaitingReword = false
+        pendingRewordText = null
+        pendingRewordMemoryId = null
+        pendingRewordIsDraft = false
         speech.stop()
         listener.stop()
         feedback.playFeedback(AudioHapticFeedback.Cue.STOP_RECORDING)
         VoiceLoopBus.publish(LoopState.Idle)
         VoiceLoopBus.appendLog("Voice loop stopped")
+    }
+
+    /** Stops the mic and stays idle until the author resumes via orb/switch. */
+    fun pauseListening() {
+        isPaused = true
+        listener.stop()
+        speech.stop()
+        feedback.playFeedback(AudioHapticFeedback.Cue.STOP_RECORDING)
+        VoiceLoopBus.publish(LoopState.Idle)
+        VoiceLoopBus.appendLog("Voice loop paused by author")
+    }
+
+    fun resumeListening() {
+        if (!isRunning) {
+            start()
+            return
+        }
+        isPaused = false
+        VoiceLoopBus.appendLog("Voice loop resumed")
+        listen()
+    }
+
+    /** Wake trigger: opens a single listening turn (volume key / switch). */
+    fun wakeListening() {
+        if (!isRunning) {
+            start()
+            return
+        }
+        if (isPaused) isPaused = false
+        if (!isRecording && !listener.isListening) {
+            VoiceLoopBus.appendLog("Wake: opening a listening turn")
+            listen()
+        }
+    }
+
+    /** Idle silence: stop the mic and stay silent until the next wake trigger. */
+    private fun idleAfterSilence() {
+        if (isRecording) return
+        listener.stop()
+        VoiceLoopBus.publish(LoopState.Idle)
+        VoiceLoopBus.appendLog("Idle: microphone off (wake with the volume key)")
     }
 
     fun stopAudiobookPlayback() {
@@ -133,7 +213,7 @@ class VoiceLoopController(
     }
 
     private fun listen() {
-        if (!isRunning) return
+        if (!isRunning || isPaused) return
         VoiceLoopBus.publish(LoopState.Listening("Listening for voice commands..."))
         listener.start(
             continuous = false,
@@ -154,8 +234,26 @@ class VoiceLoopController(
                 scope.launch {
                     if (isRunning) {
                         VoiceLoopBus.appendLog("STT pause or error: $err")
-                        feedback.playFeedback(AudioHapticFeedback.Cue.NOT_UNDERSTOOD)
-                        listen()
+                        // Benign silence / timeouts are not "not understood" and must
+                        // not fire the NACK earcon — that harsh buzz on every quiet
+                        // moment was the odd feedback reported when stopping.
+                        val benign = err.contains("silence", true) ||
+                            err.contains("timeout", true) ||
+                            err.contains("no match", true) ||
+                            err.contains("no speech", true) ||
+                            err.contains("empty", true)
+                        if (!benign) {
+                            feedback.playFeedback(AudioHapticFeedback.Cue.NOT_UNDERSTOOD)
+                        }
+                        if (settings.alwaysListening) {
+                            // Opt-in: back off, then re-arm the recognizer.
+                            delay(1200)
+                            listen()
+                        } else {
+                            // Default: go quiet. The recognizer's own chime would
+                            // otherwise repeat forever while idle.
+                            idleAfterSilence()
+                        }
                     }
                 }
             }
@@ -169,7 +267,7 @@ class VoiceLoopController(
         when (command) {
             Command.HELP -> {
                 feedback.playFeedback(AudioHapticFeedback.Cue.HELP_TRIGGERED)
-                say("You can say: record, done, review, breakdown, writing tip, prompt me, chapter, book, save, undo, delete, repeat, slower, or faster.")
+                say("You can say: record, done, review, reword, breakdown, writing tip, prompt me, chapter, book, save, undo, delete, repeat, slower, or faster.")
                 listen()
             }
             Command.RECORD -> {
@@ -195,6 +293,10 @@ class VoiceLoopController(
             Command.DECONSTRUCT -> {
                 feedback.playFeedback(AudioHapticFeedback.Cue.BUTTON_TAP)
                 readStoryBreakdown()
+            }
+            Command.REWORD -> {
+                feedback.playFeedback(AudioHapticFeedback.Cue.BUTTON_TAP)
+                rewordTarget()
             }
             Command.TIP -> {
                 feedback.playFeedback(AudioHapticFeedback.Cue.BUTTON_TAP)
@@ -263,27 +365,28 @@ class VoiceLoopController(
                     feedback.playFeedback(AudioHapticFeedback.Cue.STOP_RECORDING)
                     finishRecording()
                 } else {
-                    speech.stop()
-                    listener.stop()
-                    feedback.playFeedback(AudioHapticFeedback.Cue.STOP_RECORDING)
+                    // Pause for real: stop the mic and DO NOT re-arm it.
+                    pauseListening()
+                    say("Paused. Tap the microphone or press the volume key when you want to start again.")
                     VoiceLoopBus.publish(LoopState.Idle)
-                    say("Paused. Say record or help whenever you are ready.")
-                    listen()
                 }
             }
             Command.UNDO -> {
                 handleUndo()
             }
             Command.SAVE, Command.YES -> {
-                confirmSave()
+                if (isAwaitingReword) applyReword() else confirmSave()
             }
             Command.DELETE, Command.NO -> {
-                confirmDelete()
+                if (isAwaitingReword) discardReword() else confirmDelete()
             }
             Command.UNKNOWN -> {
                 feedback.playFeedback(AudioHapticFeedback.Cue.NOT_UNDERSTOOD)
                 // If we are awaiting confirmation and user speaks something else, guide them gently
-                if (isAwaitingConfirmation) {
+                if (isAwaitingReword) {
+                    say("I heard: $utterance. Say save to use the reworded passage, or delete to keep your original.")
+                    listen()
+                } else if (isAwaitingConfirmation) {
                     say("I heard: $utterance. Say save to keep it, or delete to discard.")
                     listen()
                 } else {
@@ -333,24 +436,31 @@ class VoiceLoopController(
     }
 
     private suspend fun mainMenu() {
-        say("Mike Write is ready. Say record to tell a story, prompt me for a question, review to hear your book, or breakdown for story elements.")
+        say("Mike Write is ready. Tap the microphone to record, or press the volume key, then say record, review, or prompt me. The microphone sleeps when you are quiet.")
         listen()
     }
 
     // ---- Recording Flow with Multi-Sentence Dictation ----
 
-    private val stopPhraseRegex = Regex("(?i)\\b(that's it|that is all|that's all|all done|done|finished|stop recording|stop|finish|wrap up)\\b")
-
     suspend fun beginRecording() {
+        // Toggle: if already recording, finish instead. Done before taking the
+        // mutex because finishRecording() itself calls confirmSave(), which also
+        // acquires stateMutex (it is not reentrant).
+        if (isRecording) {
+            finishRecording()
+            return
+        }
         stateMutex.withLock {
-            if (isRecording) {
-                finishRecording()
-                return
-            }
+            if (isRecording) return
             isRecording = true
+            isPaused = false
             pendingTranscript = null
             latestPartialText = null
             isAwaitingConfirmation = false
+            isAwaitingReword = false
+            pendingRewordText = null
+            pendingRewordMemoryId = null
+            pendingRewordIsDraft = false
         }
         listener.stop()
         speech.stop()
@@ -368,26 +478,23 @@ class VoiceLoopController(
                 latestPartialText = trimmed
                 val fullPreview = if (pendingTranscript.isNullOrBlank()) trimmed else "$pendingTranscript $trimmed"
                 VoiceLoopBus.publish(LoopState.Recording(System.currentTimeMillis(), fullPreview))
-
-                // Instant voice stop detection in live partial stream
-                if (stopPhraseRegex.containsMatchIn(trimmed)) {
-                    val cleaned = trimmed.replace(stopPhraseRegex, "").trim()
-                    latestPartialText = if (cleaned.isNotBlank()) cleaned else null
-                    scope.launch {
-                        finishRecording()
-                    }
-                }
+                // Partials are shown live only. They never end dictation and never
+                // delete words: "we finished the meal" is story, not a command.
             },
             onResult = { resultSegment ->
                 scope.launch {
                     val trimmed = resultSegment.trim()
                     if (trimmed.isBlank()) return@launch
 
-                    val hasStop = stopPhraseRegex.containsMatchIn(trimmed) ||
+                    val hasStop = RecordingStopDetector.isStopCommand(trimmed) ||
                                   CommandParser.parse(trimmed) == Command.DONE ||
                                   CommandParser.parse(trimmed) == Command.STOP
 
-                    val storyPart = trimmed.replace(stopPhraseRegex, "").trim()
+                    val storyPart = if (hasStop) {
+                        RecordingStopDetector.stripTrailingStopPhrase(trimmed)
+                    } else {
+                        trimmed
+                    }
                     if (storyPart.isNotBlank()) {
                         pendingTranscript = if (pendingTranscript.isNullOrBlank()) {
                             storyPart
@@ -448,15 +555,27 @@ class VoiceLoopController(
     }
 
     suspend fun finishRecording() {
+        if (isFinalizingRecording) return
         if (!isRecording && pendingTranscript.isNullOrBlank() && latestPartialText.isNullOrBlank()) {
             return
         }
+        isFinalizingRecording = true
+        try {
+            finishRecordingInternal()
+        } finally {
+            isFinalizingRecording = false
+        }
+    }
+
+    private suspend fun finishRecordingInternal() {
         isRecording = false
         listener.stop()
         feedback.playFeedback(AudioHapticFeedback.Cue.STOP_RECORDING)
 
-        // Integrate any in-flight partial text so no words are dropped
-        val partial = latestPartialText?.trim().orEmpty().replace(stopPhraseRegex, "").trim()
+        // Integrate any in-flight partial text so no words are dropped. Only an
+        // explicit trailing phrase is removed here; bare words like "done" are
+        // never stripped from a story sentence.
+        val partial = RecordingStopDetector.stripExplicitTrailingPhrase(latestPartialText?.trim().orEmpty())
         if (partial.isNotBlank()) {
             if (pendingTranscript.isNullOrBlank()) {
                 pendingTranscript = partial
@@ -466,10 +585,7 @@ class VoiceLoopController(
         }
         latestPartialText = null
 
-        var text = pendingTranscript?.trim()
-        if (!text.isNullOrBlank()) {
-            text = text.replace(stopPhraseRegex, "").trim()
-        }
+        val text = pendingTranscript?.trim()
 
         if (text.isNullOrBlank()) {
             say("I did not catch anything. Say record to tell your story.")
@@ -513,6 +629,8 @@ class VoiceLoopController(
 
             // Compartmentalize dictated story, format prose, and detect chapter placement/creation
             val elements = interviewer.analyzeBookElements(text, chapter, existingRoomChapters)
+            // Stay silent if the author stopped mid-analysis.
+            if (!isRunning) return@withLock
 
             // Automated Chapter Creation Integration
             var isAutoCreated = false
@@ -657,6 +775,109 @@ class VoiceLoopController(
         listen()
     }
 
+    // ---- AI Reword Flow ----
+
+    /**
+     * Rewords the active draft, or the passage with [memoryId], or the most recent
+     * passage. Uses the Gemini→Ollama text chain and Jev faithfulness scoring.
+     */
+    suspend fun rewordTarget(memoryId: Long? = null) {
+        VoiceLoopBus.publish(LoopState.Processing("Rewording with AI..."))
+
+        var sourceText: String?
+        var targetId: Long?
+
+        if (memoryId != null) {
+            val mem = withContext(Dispatchers.IO) { db.memoryDao().getMemoryById(memoryId) }
+            sourceText = mem?.formattedProse?.takeIf { it.isNotBlank() } ?: mem?.transcript
+            targetId = memoryId
+        } else if (!pendingTranscript.isNullOrBlank()) {
+            sourceText = pendingTranscript
+            targetId = null
+        } else {
+            val latest = withContext(Dispatchers.IO) { db.memoryDao().getLatestMemory() }
+            sourceText = latest?.formattedProse?.takeIf { it.isNotBlank() } ?: latest?.transcript
+            targetId = latest?.id
+        }
+
+        if (sourceText.isNullOrBlank()) {
+            say("There is no passage to reword yet. Say record to dictate one first.")
+            listen()
+            return
+        }
+
+        val outcome = rewordEngine.reword(sourceText, settings.currentChapter)
+        // If the author stopped while the AI call was in flight, stay silent.
+        if (!isRunning) return
+        if (outcome.rewordedText.isNullOrBlank()) {
+            say("I could not reword that passage. ${outcome.error ?: "Please try again later."}")
+            listen()
+            return
+        }
+
+        pendingRewordText = outcome.rewordedText
+        pendingRewordMemoryId = targetId
+        pendingRewordIsDraft = targetId == null
+        isAwaitingReword = true
+
+        if (settings.autoApplyReword && outcome.shouldApply) {
+            applyReword()
+            return
+        }
+
+        val notes = outcome.notes?.let { "$it. " } ?: ""
+        val faithful = outcome.faithfulProbability?.let { "Jev faithfulness ${(it * 100).toInt()} percent. " } ?: ""
+        say("Here is a reworded version. $notes$faithful Say save to use it, or delete to keep your original. ${outcome.rewordedText}")
+        listen()
+    }
+
+    suspend fun applyReword() = stateMutex.withLock {
+        val reworded = pendingRewordText
+        val id = pendingRewordMemoryId
+        val isDraft = pendingRewordIsDraft
+
+        isAwaitingReword = false
+        pendingRewordText = null
+        pendingRewordMemoryId = null
+        pendingRewordIsDraft = false
+
+        if (reworded.isNullOrBlank()) {
+            say("There is nothing to apply.")
+            listen()
+            return@withLock
+        }
+
+        if (isDraft || id == null) {
+            // No saved memory yet: replace the active draft and let the normal
+            // save confirmation flow persist it.
+            pendingTranscript = reworded
+            isAwaitingConfirmation = true
+            say("Applied the reworded passage to your active draft. Say save to keep it, or delete to discard.")
+            listen()
+        } else {
+            val mem = withContext(Dispatchers.IO) { db.memoryDao().getMemoryById(id) }
+            if (mem == null) {
+                say("I could not find that passage to update.")
+                listen()
+            } else {
+                withContext(Dispatchers.IO) { db.memoryDao().update(mem.copy(formattedProse = reworded)) }
+                feedback.playFeedback(AudioHapticFeedback.Cue.MEMORY_SAVED)
+                say("Reworded passage saved. Your original words remain in the transcript. Say review to hear it.")
+                listen()
+            }
+        }
+    }
+
+    suspend fun discardReword() {
+        isAwaitingReword = false
+        pendingRewordText = null
+        pendingRewordMemoryId = null
+        pendingRewordIsDraft = false
+        feedback.playFeedback(AudioHapticFeedback.Cue.ACTION_UNDONE)
+        say("Kept your original words. Say reword to try again.")
+        listen()
+    }
+
     // ---- Review & Deconstruct Flow ----
 
     suspend fun reviewLatest() {
@@ -751,20 +972,14 @@ class VoiceLoopController(
         val craftFocus = craftReport.recommendations.firstOrNull()
 
         val prompt = interviewer.generateChapterPromptWithCraft(chapter, craftFocus)
+        if (!isRunning) return
         VoiceLoopBus.appendLog("Craft-informed prompt ($chapter): $prompt")
         say("Here is a question for $chapter: $prompt. Say record whenever you are ready to answer.")
         listen()
     }
 
     suspend fun cycleChapter() {
-        val chapters = listOf(
-            "Chapter 1: Early Days",
-            "Chapter 2: Growing Up & Family",
-            "Chapter 3: Passions & Milestones",
-            "Chapter 4: The Turning Point",
-            "Chapter 5: Strength, Healing & Daily Life",
-            "Chapter 6: Wisdom & Legacy"
-        )
+        val chapters = BookChapters.STANDARD
         val currentIndex = chapters.indexOf(settings.currentChapter)
         val nextChapter = if (currentIndex in 0 until chapters.size - 1) {
             chapters[currentIndex + 1]
@@ -795,6 +1010,7 @@ class VoiceLoopController(
             memoryCount = allMemories.size,
             excerpts = excerpts
         )
+        if (!isRunning) return
 
         say(summary)
         listen()
@@ -806,14 +1022,7 @@ class VoiceLoopController(
             db.memoryDao().getAllMemoriesAsc().firstOrNull() ?: emptyList()
         }
 
-        val chapters = listOf(
-            "Chapter 1: Early Days",
-            "Chapter 2: Growing Up & Family",
-            "Chapter 3: Passions & Milestones",
-            "Chapter 4: The Turning Point",
-            "Chapter 5: Strength, Healing & Daily Life",
-            "Chapter 6: Wisdom & Legacy"
-        )
+        val chapters = BookChapters.STANDARD
 
         val report = com.example.data.BookPublishingAuditor.audit(
             memories = allMemories,

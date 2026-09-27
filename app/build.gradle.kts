@@ -1,12 +1,9 @@
-import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
-
 plugins {
   alias(libs.plugins.android.application)
   alias(libs.plugins.kotlin.compose)
   alias(libs.plugins.google.devtools.ksp)
   alias(libs.plugins.roborazzi)
   alias(libs.plugins.secrets)
-  alias(libs.plugins.google.services)
   jacoco
 }
 
@@ -15,7 +12,7 @@ android {
   compileSdk { version = release(36) { minorApiLevel = 1 } }
 
   defaultConfig {
-    applicationId = "com.aistudio.mikewrite.kxvbmq"
+    applicationId = "com.ncsound919.mikewrite"
     minSdk = 24
     targetSdk = 36
     versionCode = 1
@@ -49,7 +46,7 @@ android {
     }
     debug {
       signingConfig = signingConfigs.getByName("debugConfig")
-      // enableUnitTestCoverage = true
+      enableUnitTestCoverage = true
     }
   }
   compileOptions {
@@ -86,8 +83,6 @@ secrets {
   ignoreList.add("FIREBASE_APPCHECK_DEBUG_TOKEN")
 }
 
-googleServices { missingGoogleServicesStrategy = MissingGoogleServicesStrategy.WARN }
-
 ksp {
   arg("room.schemaLocation", "$projectDir/schemas")
 }
@@ -96,7 +91,6 @@ ksp {
 // This makes it easy to add them back in the future if needed.
 dependencies {
   implementation(platform(libs.androidx.compose.bom))
-  implementation(platform(libs.firebase.bom))
   // implementation(libs.accompanist.permissions)
   implementation(libs.androidx.activity.compose)
   // implementation(libs.androidx.camera.camera2)
@@ -119,7 +113,6 @@ dependencies {
   implementation(libs.androidx.room.runtime)
   // implementation(libs.coil.compose)
   implementation(libs.converter.moshi)
-  implementation(libs.firebase.ai)
   // Uncomment to use Firestore:
   // implementation(libs.firebase.firestore)
 
@@ -129,8 +122,6 @@ dependencies {
   // implementation(libs.androidx.credentials)
   // implementation(libs.androidx.credentials.play.services)
   // implementation(libs.googleid)
-  implementation(libs.firebase.appcheck.recaptcha)
-  implementation(libs.firebase.appcheck.debug)
   implementation(libs.kotlinx.coroutines.android)
   implementation(libs.kotlinx.coroutines.core)
   implementation(libs.logging.interceptor)
@@ -158,6 +149,24 @@ dependencies {
   "ksp"(libs.moshi.kotlin.codegen)
 }
 
+// Coverage wiring for the debug variant. Paths are resolved lazily from the build
+// directory so the report never races a recompile or binds to a stale output dir.
+val debugKotlinClasses = layout.buildDirectory.dir("intermediates/built_in_kotlinc/debug/compileDebugKotlin/classes")
+val debugJavaClasses = layout.buildDirectory.dir("intermediates/javac/debug/compileDebugJavaWithJavac/classes")
+val debugTestExec = layout.buildDirectory.file("outputs/unit_test_code_coverage/debugUnitTest/testDebugUnitTest.exec")
+val coverageSourceDirs = files("$projectDir/src/main/java")
+val coverageClassExcludes = listOf(
+  // Exclude generated/boilerplate and framework copies; include real app classes only.
+  "**/R.class",
+  "**/R\$*.class",
+  "**/BuildConfig.*",
+  "**/Manifest*.*",
+  "**/*Test*.*",
+  "android/**/*.*",
+  "androidx/**/*.*",
+  "**/*ComposableSingletons*.*"
+)
+
 tasks.register<JacocoReport>("jacocoTestReport") {
   dependsOn("testDebugUnitTest")
   reports {
@@ -167,28 +176,31 @@ tasks.register<JacocoReport>("jacocoTestReport") {
     html.outputLocation.set(layout.buildDirectory.dir("reports/jacocoHtml"))
     csv.outputLocation.set(layout.buildDirectory.file("reports/jacoco.csv"))
   }
-  val fileFilter = listOf(
-    "**/R.class",
-    "**/R$*.class",
-    "**/BuildConfig.*",
-    "**/Manifest*.*",
-    "**/*Test*.*",
-    "android/**/*.*",
-    "androidx/**/*.*",
-    "**/*ComposableSingletons*.*"
+  sourceDirectories.setFrom(coverageSourceDirs)
+  classDirectories.setFrom(
+    fileTree(debugKotlinClasses) { exclude(coverageClassExcludes) },
+    fileTree(debugJavaClasses) { exclude(coverageClassExcludes) }
   )
-  val kotlinClasses = fileTree("${project.layout.buildDirectory.get()}/intermediates/built_in_kotlinc/debug/compileDebugKotlin/classes") {
-    exclude(fileFilter)
-  }
-  val javaClasses = fileTree("${project.layout.buildDirectory.get()}/intermediates/javac/debug/compileDebugJavaWithJavac/classes") {
-    exclude(fileFilter)
-  }
-  val mainSrc = "${project.projectDir}/src/main/java"
+  executionData.setFrom(debugTestExec)
+}
 
-  sourceDirectories.setFrom(files(mainSrc))
-  classDirectories.setFrom(files(kotlinClasses, javaClasses))
-  executionData.setFrom(fileTree(project.layout.buildDirectory.get()) {
-    include("outputs/unit_test_code_coverage/debugUnitTest/testDebugUnitTest.exec")
-  })
+// Opt-in ratchet gate. Wire into CI/`check` once the threshold is raised; not attached
+// to `check` by default so a regression fails the dedicated task, not every build.
+tasks.register<JacocoCoverageVerification>("jacocoTestCoverageVerification") {
+  dependsOn("testDebugUnitTest")
+  sourceDirectories.setFrom(coverageSourceDirs)
+  classDirectories.setFrom(
+    fileTree(debugKotlinClasses) { exclude(coverageClassExcludes) },
+    fileTree(debugJavaClasses) { exclude(coverageClassExcludes) }
+  )
+  executionData.setFrom(debugTestExec)
+  violationRules {
+    rule {
+      limit {
+        counter = "LINE"
+        minimum = "0.55".toBigDecimal()
+      }
+    }
+  }
 }
 

@@ -20,6 +20,7 @@ enum class Command {
     CHAPTER,
     BOOK,
     DECONSTRUCT, // Command to hear literary layers and craft elements breakdown
+    REWORD,      // Command to have the AI reword / rewrite the active passage
     TIP,         // Command to hear writing craft coaching tip
     READINESS,   // Command to hear publishing readiness and chapter completion metrics
     PLAYBACK,    // Command to hear active live draft playback
@@ -58,22 +59,48 @@ object CommandParser {
         Command.CHAPTER to listOf("chapter", "next chapter", "change chapter", "new chapter"),
         Command.BOOK to listOf("read whole book", "read memoir", "entire book", "summary", "book summary", "read book"),
         Command.DECONSTRUCT to listOf("breakdown", "deconstruct", "story elements", "perspectives", "analyze", "explain story", "layers"),
+        Command.REWORD to listOf("reword", "reword this", "rewrite", "rewrite this", "rephrase", "rephrase this", "polish this passage", "clean up this passage", "make it better"),
         Command.TIP to listOf("writing tip", "tip", "craft tip", "advice", "coach me", "writing advice"),
         Command.READINESS to listOf("readiness", "publishing readiness", "book status", "progress", "word count", "pages", "how ready is my book", "manuscript status")
     )
 
     fun parse(utterance: String): Command {
-        val t = utterance.lowercase().trim()
+        val t = normalize(utterance)
         if (t.isBlank()) return Command.UNKNOWN
 
         return map.entries
             .firstOrNull { (_, words) ->
-                words.any { word ->
-                    t == word ||
-                    t.startsWith("$word ") ||
-                    t.endsWith(" $word") ||
-                    t.contains(" $word ")
-                }
+                words.any { word -> matches(t, word) }
             }?.key ?: Command.UNKNOWN
     }
+
+    /**
+     * Single-word commands must be spoken on their own. Matching them anywhere
+     * inside a sentence previously meant ordinary memoir speech triggered
+     * destructive commands: "I have no idea" parsed as NO (delete), "I wasn't
+     * sure" parsed as YES (save), "we can go back to that" parsed as BACK.
+     *
+     * Multi-word phrases may still be the whole utterance, its prefix, or its
+     * suffix, but are no longer matched in the middle of a sentence.
+     */
+    private fun matches(utterance: String, keyword: String): Boolean {
+        return if (keyword.contains(' ')) {
+            utterance == keyword ||
+                utterance.startsWith("$keyword ") ||
+                utterance.endsWith(" $keyword")
+        } else {
+            utterance == keyword
+        }
+    }
+
+    /**
+     * Lowercases and strips punctuation so speech results like "Record." or
+     * "Done!" still match, while preserving apostrophes ("that's") and digits.
+     */
+    private fun normalize(s: String): String =
+        s.lowercase()
+            .replace('\u2019', '\'')
+            .replace(Regex("[^a-z0-9' ]"), " ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
 }

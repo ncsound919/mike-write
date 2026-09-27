@@ -446,9 +446,25 @@ class ExampleRobolectricTest {
             chapterTitle = null,
             memories = sampleMemories
         )
-        assertTrue(shareResult.success)
-        assertNotNull(shareResult.uri)
+        // 4. File preparation for sharing. The artifact is written to cache/exports before
+        // FileProvider URI resolution, so assert the artifact a JVM run can verify.
+        val shareFile = java.io.File(java.io.File(context.cacheDir, "exports"), "My_Life_Journey.pdf")
+        assertEquals("My_Life_Journey.pdf", shareResult.fileName)
         assertEquals("application/pdf", shareResult.mimeType)
+        assertTrue("Export file was not written", shareFile.exists() && shareFile.length() > 0)
+        // androidx FileProvider.belongsToRoot() hardcodes '/' as the path separator, so it
+        // cannot match Windows-style '\' paths under Robolectric. Verify the share URI
+        // only on POSIX hosts; real share/grant behavior belongs to instrumented tests.
+        if (shareResult.success) {
+            assertNotNull(shareResult.uri)
+        } else if (java.io.File.separatorChar == '/') {
+            org.junit.Assert.fail("createShareableFile failed on a POSIX host: ${shareResult.message}")
+        } else {
+            org.junit.Assume.assumeTrue(
+                "Skipped on Windows: androidx FileProvider cannot match '\\' paths (${shareResult.message})",
+                false
+            )
+        }
 
         // 5. Command parsing for export
         assertEquals(Command.EXPORT, CommandParser.parse("export book"))

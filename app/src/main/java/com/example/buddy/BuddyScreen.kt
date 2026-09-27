@@ -46,6 +46,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.BookChapters
 import com.example.data.Memory
 import com.example.loop.LoopState
 import com.example.loop.VoiceLoopBus
@@ -99,14 +100,7 @@ fun BuddyScreen(
 
     val currentChapter = controller.settings.currentChapter
 
-    val allChapters = listOf(
-        "Chapter 1: Early Days",
-        "Chapter 2: Career & Passions",
-        "Chapter 3: Family & Love",
-        "Chapter 4: Turning Points",
-        "Chapter 5: Hardships & Resilience",
-        "Chapter 6: Wisdom & Legacy"
-    )
+    val allChapters = BookChapters.STANDARD
 
     // Selected memory for inspecting compartmentalized literary breakdown
     var inspectingMemory by remember { mutableStateOf<Memory?>(null) }
@@ -569,10 +563,10 @@ fun BuddyScreen(
                                         onClickLabel = "Toggle voice recording"
                                     ) {
                                         scope.launch {
-                                            if (loopState is LoopState.Recording || controller.isRecording) {
-                                                controller.finishRecording()
-                                            } else {
-                                                controller.beginRecording()
+                                            when {
+                                                controller.isPaused -> controller.resumeListening()
+                                                loopState is LoopState.Recording || controller.isRecording -> controller.finishRecording()
+                                                else -> controller.beginRecording()
                                             }
                                         }
                                     }
@@ -903,6 +897,7 @@ fun BuddyScreen(
                     Triple("Harmonize", "Polish style", Icons.Default.Brush),
                     Triple("Done", "Finish story", Icons.Default.CheckCircle),
                     Triple("Breakdown", "Story elements", Icons.Default.AutoAwesome),
+                    Triple("Reword", "AI rewrite passage", Icons.Default.AutoFixHigh),
                     Triple("Tip", "Writing coach", Icons.Default.Lightbulb),
                     Triple("Save", "Keep memory", Icons.Default.Save),
                     Triple("Prompt me", "Ask AI question", Icons.Default.Psychology),
@@ -1252,6 +1247,23 @@ fun BuddyScreen(
                                                     contentDescription = "View literary elements",
                                                     tint = if (isExpanded) AmberGold else StoryPurple,
                                                     modifier = Modifier.size(20.dp)
+                                                )
+                                            }
+
+                                            // AI reword this passage
+                                            IconButton(
+                                                onClick = {
+                                                    scope.launch {
+                                                        controller.rewordTarget(mem.id)
+                                                    }
+                                                },
+                                                modifier = Modifier.size(34.dp).testTag("reword_memory_${mem.id}")
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.AutoFixHigh,
+                                                    contentDescription = "Reword passage with AI",
+                                                    tint = CraftGreen,
+                                                    modifier = Modifier.size(19.dp)
                                                 )
                                             }
 

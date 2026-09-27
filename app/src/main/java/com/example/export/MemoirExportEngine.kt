@@ -180,14 +180,15 @@ object MemoirExportEngine {
         authorName: String,
         chapterTitle: String?,
         memories: List<Memory>,
-        outputStream: OutputStream
+        outputStream: OutputStream,
+        includeLiteraryDetails: Boolean = true
     ) {
         val document = try {
             PdfDocument()
         } catch (e: Throwable) {
             // If PdfDocument cannot be instantiated (e.g., in headless unit test runners without native skia/pdf libraries),
             // write formatted plain text fallback so downstream operations do not throw an unhandled crash.
-            val fallbackText = formatAsText(bookTitle, authorName, chapterTitle, memories)
+            val fallbackText = formatAsText(bookTitle, authorName, chapterTitle, memories, includeLiteraryDetails)
             outputStream.write(fallbackText.toByteArray(Charsets.UTF_8))
             return
         }
@@ -272,7 +273,7 @@ object MemoirExportEngine {
             document.startPage(pageInfo)
         } catch (e: Throwable) {
             // Android Robolectric shadow on JVM without native Skia/PDF implementation throws IllegalStateException
-            val fallbackText = formatAsText(bookTitle, authorName, chapterTitle, memories)
+            val fallbackText = formatAsText(bookTitle, authorName, chapterTitle, memories, includeLiteraryDetails)
             outputStream.write(fallbackText.toByteArray(Charsets.UTF_8))
             return
         }
@@ -368,9 +369,11 @@ object MemoirExportEngine {
 
                 // Literary context badges if present
                 val metaDetails = mutableListOf<String>()
-                if (!mem.emotionalTone.isNullOrBlank()) metaDetails.add("Tone: ${mem.emotionalTone}")
-                if (!mem.storyArc.isNullOrBlank()) metaDetails.add("Arc: ${mem.storyArc}")
-                if (!mem.reflection.isNullOrBlank()) metaDetails.add("Reflection: ${mem.reflection}")
+                if (includeLiteraryDetails) {
+                    if (!mem.emotionalTone.isNullOrBlank()) metaDetails.add("Tone: ${mem.emotionalTone}")
+                    if (!mem.storyArc.isNullOrBlank()) metaDetails.add("Arc: ${mem.storyArc}")
+                    if (!mem.reflection.isNullOrBlank()) metaDetails.add("Reflection: ${mem.reflection}")
+                }
 
                 if (metaDetails.isNotEmpty()) {
                     yPosition += 4f
@@ -453,7 +456,8 @@ object MemoirExportEngine {
         bookTitle: String,
         authorName: String,
         chapterTitle: String?,
-        memories: List<Memory>
+        memories: List<Memory>,
+        includeLiteraryDetails: Boolean = true
     ): ExportResult = withContext(Dispatchers.IO) {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -476,15 +480,15 @@ object MemoirExportEngine {
                 context.contentResolver.openOutputStream(uri)?.use { stream ->
                     when (format) {
                         ExportFormat.TXT -> {
-                            val content = formatAsText(bookTitle, authorName, chapterTitle, memories)
+                            val content = formatAsText(bookTitle, authorName, chapterTitle, memories, includeLiteraryDetails)
                             stream.write(content.toByteArray(Charsets.UTF_8))
                         }
                         ExportFormat.MARKDOWN -> {
-                            val content = formatAsMarkdown(bookTitle, authorName, chapterTitle, memories)
+                            val content = formatAsMarkdown(bookTitle, authorName, chapterTitle, memories, includeLiteraryDetails)
                             stream.write(content.toByteArray(Charsets.UTF_8))
                         }
                         ExportFormat.PDF -> {
-                            generatePdf(bookTitle, authorName, chapterTitle, memories, stream)
+                            generatePdf(bookTitle, authorName, chapterTitle, memories, stream, includeLiteraryDetails)
                         }
                     }
                 }
@@ -506,15 +510,15 @@ object MemoirExportEngine {
                 FileOutputStream(file).use { stream ->
                     when (format) {
                         ExportFormat.TXT -> {
-                            val content = formatAsText(bookTitle, authorName, chapterTitle, memories)
+                            val content = formatAsText(bookTitle, authorName, chapterTitle, memories, includeLiteraryDetails)
                             stream.write(content.toByteArray(Charsets.UTF_8))
                         }
                         ExportFormat.MARKDOWN -> {
-                            val content = formatAsMarkdown(bookTitle, authorName, chapterTitle, memories)
+                            val content = formatAsMarkdown(bookTitle, authorName, chapterTitle, memories, includeLiteraryDetails)
                             stream.write(content.toByteArray(Charsets.UTF_8))
                         }
                         ExportFormat.PDF -> {
-                            generatePdf(bookTitle, authorName, chapterTitle, memories, stream)
+                            generatePdf(bookTitle, authorName, chapterTitle, memories, stream, includeLiteraryDetails)
                         }
                     }
                 }
@@ -551,7 +555,8 @@ object MemoirExportEngine {
         bookTitle: String,
         authorName: String,
         chapterTitle: String?,
-        memories: List<Memory>
+        memories: List<Memory>,
+        includeLiteraryDetails: Boolean = true
     ): ExportResult = withContext(Dispatchers.IO) {
         try {
             val exportDir = File(context.cacheDir, "exports")
@@ -561,15 +566,15 @@ object MemoirExportEngine {
             FileOutputStream(file).use { stream ->
                 when (format) {
                     ExportFormat.TXT -> {
-                        val content = formatAsText(bookTitle, authorName, chapterTitle, memories)
+                        val content = formatAsText(bookTitle, authorName, chapterTitle, memories, includeLiteraryDetails)
                         stream.write(content.toByteArray(Charsets.UTF_8))
                     }
                     ExportFormat.MARKDOWN -> {
-                        val content = formatAsMarkdown(bookTitle, authorName, chapterTitle, memories)
+                        val content = formatAsMarkdown(bookTitle, authorName, chapterTitle, memories, includeLiteraryDetails)
                         stream.write(content.toByteArray(Charsets.UTF_8))
                     }
                     ExportFormat.PDF -> {
-                        generatePdf(bookTitle, authorName, chapterTitle, memories, stream)
+                        generatePdf(bookTitle, authorName, chapterTitle, memories, stream, includeLiteraryDetails)
                     }
                 }
             }

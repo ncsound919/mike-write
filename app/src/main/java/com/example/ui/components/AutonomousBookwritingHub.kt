@@ -37,6 +37,17 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
+ * Toasts require a thread with a Looper. A coroutine started from the composition can
+ * resume off the main thread (e.g. after a `withContext(Dispatchers.IO)`), so posting to
+ * the main looper is the only reliable way to show one from here.
+ */
+private fun toastOnMain(context: android.content.Context, message: String) {
+    android.os.Handler(android.os.Looper.getMainLooper()).post {
+        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+    }
+}
+
+/**
  * Autonomous Bookwriting Hub:
  * Provides interactive oversight and execution for the 3 autonomous writing features:
  * 1. Autonomous Timeline & Narrative Weaver (Chronological scene sequencing and transition bridging)
@@ -219,7 +230,7 @@ fun AutonomousBookwritingHub(
                         )
                         generatedBridges = bridges
                         isGeneratingBridges = false
-                        Toast.makeText(context, "Synthesized ${bridges.size} narrative bridges!", Toast.LENGTH_SHORT).show()
+                        toastOnMain(context, "Synthesized ${bridges.size} narrative bridges!")
                     }
                 }
             )
@@ -230,7 +241,7 @@ fun AutonomousBookwritingHub(
                 onPromptSeniorWriter = { prompt ->
                     scope.launch {
                         controller.say(prompt)
-                        Toast.makeText(context, "Speaking autonomous expansion question aloud...", Toast.LENGTH_SHORT).show()
+                        toastOnMain(context, "Speaking autonomous expansion question aloud...")
                     }
                 }
             )
@@ -633,7 +644,7 @@ private fun StyleHarmonizerSection(
                                 controller.db.memoryDao().updateAll(updatedMemories)
                             }
                             isHarmonizing = false
-                            Toast.makeText(context, "Manuscript harmonized successfully!", Toast.LENGTH_SHORT).show()
+                            toastOnMain(context, "Manuscript harmonized successfully!")
                         }
                     },
                     enabled = !isHarmonizing && scorecard.detectedIssues.isNotEmpty(),
@@ -795,7 +806,7 @@ private fun UnifiedPipelineSection(
                         onClick = {
                             scope.launch {
                                 controller.runUnifiedPipeline()
-                                Toast.makeText(context, "Executing unified autonomous pipeline...", Toast.LENGTH_SHORT).show()
+                                toastOnMain(context, "Executing unified autonomous pipeline...")
                             }
                         },
                         enabled = !isAutomating && memories.isNotEmpty(),

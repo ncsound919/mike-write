@@ -114,4 +114,55 @@ class SettingsStore(context: Context) {
     var hasCompletedTour: Boolean
         get() = prefs.getBoolean("has_completed_tour", false)
         set(value) = prefs.edit().putBoolean("has_completed_tour", value).apply()
+
+    // --- AI providers (blank => fall back to .env / BuildConfig defaults) ---
+    var geminiApiKey: String
+        get() = prefs.getString("gemini_api_key", "") ?: ""
+        set(value) = prefs.edit().putString("gemini_api_key", value).apply()
+
+    var ollamaUrl: String
+        get() = prefs.getString("ollama_url", "") ?: ""
+        set(value) = prefs.edit().putString("ollama_url", value).apply()
+
+    var ollamaModel: String
+        get() = prefs.getString("ollama_model", "") ?: ""
+        set(value) = prefs.edit().putString("ollama_model", value).apply()
+
+    var ollamaApiKey: String
+        get() = prefs.getString("ollama_api_key", "") ?: ""
+        set(value) = prefs.edit().putString("ollama_api_key", value).apply()
+
+    var jevBaseUrl: String
+        get() = prefs.getString("jev_base_url", "") ?: ""
+        set(value) = prefs.edit().putString("jev_base_url", value).apply()
+
+    var jevModel: String
+        get() = prefs.getString("jev_model", "") ?: ""
+        set(value) = prefs.edit().putString("jev_model", value).apply()
+
+    var jevApiKey: String
+        get() = prefs.getString("jev_api_key", "") ?: ""
+        set(value) = prefs.edit().putString("jev_api_key", value).apply()
+
+    var jevLocalUrl: String
+        get() = prefs.getString("jev_local_url", "") ?: ""
+        set(value) = prefs.edit().putString("jev_local_url", value).apply()
+
+    var autoApplyReword: Boolean
+        get() = prefs.getBoolean("auto_apply_reword", false)
+        set(value) = prefs.edit().putBoolean("auto_apply_reword", value).apply()
+
+    /** Audible earcon beeps + haptics. Off = silent controls. */
+    var earconsEnabled: Boolean
+        get() = prefs.getBoolean("earcons_enabled", true)
+        set(value) = prefs.edit().putBoolean("earcons_enabled", value).apply()
+
+    /**
+     * When false (default) the mic stops on idle silence and only re-arms on a
+     * wake trigger (volume key / orb). When true it re-arms forever, which keeps
+     * the recognizer (and its system chime) hot.
+     */
+    var alwaysListening: Boolean
+        get() = prefs.getBoolean("always_listening", false)
+        set(value) = prefs.edit().putBoolean("always_listening", value).apply()
 }

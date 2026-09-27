@@ -32,6 +32,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.ai.AiConfigProvider
+import com.example.ai.AiTextEngine
 import com.example.ai.Interviewer
 import com.example.buddy.BuddyScreen
 import com.example.caregiver.CaregiverScreen
@@ -55,9 +57,13 @@ class MainActivity : ComponentActivity() {
 
         database = MikeWriteDatabase.getInstance(this)
         settings = SettingsStore(this)
+        // The LLM budget guardrail is per app session; without this reset the
+        // optional AI features permanently fall back to deterministic mode after
+        // 20 calls across the lifetime of the process.
+        com.example.deterministic.DeterministicRouter.resetSessionCounters()
         val speech = SpeechEngine(this)
         val listener = AndroidSttEngine(this)
-        val interviewer = Interviewer()
+        val interviewer = Interviewer(AiTextEngine { AiConfigProvider.from(settings) })
 
         loopController = VoiceLoopController(
             context = this,
@@ -67,6 +73,7 @@ class MainActivity : ComponentActivity() {
             interviewer = interviewer,
             settings = settings
         )
+        loopController.feedback.setEnabled(settings.earconsEnabled)
 
         setContent {
             MikeWriteTheme {
@@ -80,7 +87,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+        val micGranted = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        // Never open the microphone stream before the author has accepted the
+        // in-app audio & privacy consent. Previously onResume started the voice
+        // loop (and the mic) behind the consent gate.
+        if (micGranted && settings.hasConsentedToAudioProcessing) {
             loopController.start()
         }
     }
@@ -91,6 +102,10 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent?): Boolean {
+        // Ignore key auto-repeat so holding the volume rocker fires exactly once.
+        if (event == null || event.repeatCount != 0) {
+            return super.onKeyDown(keyCode, event)
+        }
         when (keyCode) {
             android.view.KeyEvent.KEYCODE_VOLUME_DOWN -> {
                 com.example.loop.VoiceLoopBus.triggerSwitchAction(com.example.loop.AccessibilitySwitchAction.TOGGLE_RECORD_OR_CONFIRM)
@@ -132,7 +147,7 @@ fun MainAppHost(
         contract = ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         hasAudioPermission = isGranted
-        if (isGranted) {
+        if (isGranted && controller.settings.hasConsentedToAudioProcessing) {
             controller.start()
         }
     }
@@ -265,7 +280,7 @@ fun MainAppHost(
                     border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle)
                 ) {
                     Text(
-                        text = "Mike Write records your voice solely to transcribe your memories into your private memoir. All drafts are stored on your device. Follow-up interview questions are processed with end-to-end encryption. Your voice recordings are never sold or shared with advertisers.",
+                        text = "Mike Write turns your speech into text so you can dictate your memoir hands-free. Your transcripts and chapters are stored in a private database on this device, and the app itself never saves audio recordings.\n\nSpeech recognition is provided by your device's speech service (for example, Google), which may send audio to that provider's servers to convert it to text, depending on your device settings.\n\nWhen you use the optional AI writing features (interview questions, formatting, summaries), the text of your story is sent to Google's Gemini service over an encrypted TLS connection. This is transport encryption, not end-to-end encryption. Your stories are never sold or shared with advertisers.",
                         style = MaterialTheme.typography.bodyMedium.copy(
                             color = LightGrayMuted,
                             lineHeight = 22.sp

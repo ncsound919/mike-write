@@ -33,6 +33,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.BookChapters
 import com.example.data.BookPublishingAuditor
 import com.example.data.ManuscriptFormat
 import com.example.data.Memory
@@ -69,6 +70,17 @@ fun CaregiverScreen(
     var fontSizeScale by remember { mutableFloatStateOf(settings.fontSizeScale) }
     var highContrastMode by remember { mutableStateOf(settings.highContrastMode) }
     var readingTheme by remember { mutableStateOf(settings.readingTheme) }
+    var geminiApiKey by remember { mutableStateOf(settings.geminiApiKey) }
+    var ollamaUrl by remember { mutableStateOf(settings.ollamaUrl) }
+    var ollamaModel by remember { mutableStateOf(settings.ollamaModel) }
+    var ollamaApiKey by remember { mutableStateOf(settings.ollamaApiKey) }
+    var jevBaseUrl by remember { mutableStateOf(settings.jevBaseUrl) }
+    var jevModel by remember { mutableStateOf(settings.jevModel) }
+    var jevApiKey by remember { mutableStateOf(settings.jevApiKey) }
+    var jevLocalUrl by remember { mutableStateOf(settings.jevLocalUrl) }
+    var autoApplyReword by remember { mutableStateOf(settings.autoApplyReword) }
+    var earconsEnabled by remember { mutableStateOf(settings.earconsEnabled) }
+    var alwaysListening by remember { mutableStateOf(settings.alwaysListening) }
 
     var selectedTab by remember { mutableIntStateOf(0) } // 0 = Settings, 1 = Book & Transcripts, 2 = Publishing Readiness, 3 = Diagnostics
 
@@ -81,14 +93,7 @@ fun CaregiverScreen(
     val chapters = if (roomChapters.isNotEmpty()) {
         roomChapters.map { it.title }
     } else {
-        listOf(
-            "Chapter 1: Early Days",
-            "Chapter 2: Growing Up & Family",
-            "Chapter 3: Passions & Milestones",
-            "Chapter 4: The Turning Point",
-            "Chapter 5: Strength, Healing & Daily Life",
-            "Chapter 6: Wisdom & Legacy"
-        )
+        BookChapters.STANDARD
     }
 
     val inputModes = listOf("Voice Loop (Always Listening)", "Push-to-Talk", "Switch Scan Assist", "Eye Gaze Dwell")
@@ -991,6 +996,238 @@ fun CaregiverScreen(
                                         modifier = Modifier.testTag("live_echo_playback_switch")
                                     )
                                 }
+
+                                Spacer(Modifier.height(14.dp))
+                                HorizontalDivider(color = BorderSubtle, thickness = 1.dp)
+                                Spacer(Modifier.height(14.dp))
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "Audible Earcons & Haptics",
+                                            color = OffWhiteText,
+                                            fontWeight = FontWeight.SemiBold,
+                                            fontSize = 15.sp
+                                        )
+                                        Text(
+                                            text = "Turn off to silence the confirmation beeps and vibrations.",
+                                            color = LightGrayMuted,
+                                            fontSize = 12.sp
+                                        )
+                                    }
+                                    Spacer(Modifier.width(10.dp))
+                                    Switch(
+                                        checked = earconsEnabled,
+                                        onCheckedChange = {
+                                            earconsEnabled = it
+                                            settings.earconsEnabled = it
+                                            controller.feedback.setEnabled(it)
+                                        },
+                                        colors = SwitchDefaults.colors(
+                                            checkedThumbColor = AmberGold,
+                                            checkedTrackColor = AmberGold.copy(alpha = 0.4f),
+                                            uncheckedThumbColor = LightGrayMuted,
+                                            uncheckedTrackColor = MidnightCard
+                                        ),
+                                        modifier = Modifier.testTag("earcons_enabled_switch")
+                                    )
+                                }
+                            }
+                        }
+
+                        // Section: AI Providers (Gemini / Ollama text, Jev decisions)
+                        Card(
+                            shape = RoundedCornerShape(20.dp),
+                            colors = CardDefaults.cardColors(containerColor = DarkNavySurface),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle)
+                        ) {
+                            Column(modifier = Modifier.padding(20.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.AutoFixHigh, contentDescription = null, tint = SkyBlue)
+                                    Spacer(Modifier.width(10.dp))
+                                    Text(
+                                        text = "AI Providers & Reword",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 18.sp,
+                                        color = OffWhiteText
+                                    )
+                                }
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    text = "Text is generated by Gemini, then falls back to Ollama. Jev (Vercel AI Gateway) rates rewrites. Blank fields use the values compiled from .env.",
+                                    color = LightGrayMuted,
+                                    fontSize = 13.sp
+                                )
+                                Spacer(Modifier.height(16.dp))
+
+                                OutlinedTextField(
+                                    value = geminiApiKey,
+                                    onValueChange = { geminiApiKey = it; settings.geminiApiKey = it },
+                                    label = { Text("Gemini API Key (primary AI)", color = LightGrayMuted) },
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = AmberGold,
+                                        unfocusedBorderColor = BorderSubtle,
+                                        focusedTextColor = OffWhiteText,
+                                        unfocusedTextColor = OffWhiteText
+                                    ),
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth().testTag("gemini_api_key_field")
+                                )
+
+                                Spacer(Modifier.height(12.dp))
+
+                                OutlinedTextField(
+                                    value = ollamaUrl,
+                                    onValueChange = { ollamaUrl = it; settings.ollamaUrl = it },
+                                    label = { Text("Ollama Base URL (e.g. http://192.168.1.50:11434)", color = LightGrayMuted) },
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = AmberGold,
+                                        unfocusedBorderColor = BorderSubtle,
+                                        focusedTextColor = OffWhiteText,
+                                        unfocusedTextColor = OffWhiteText
+                                    ),
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth().testTag("ollama_url_field")
+                                )
+
+                                Spacer(Modifier.height(12.dp))
+
+                                OutlinedTextField(
+                                    value = ollamaModel,
+                                    onValueChange = { ollamaModel = it; settings.ollamaModel = it },
+                                    label = { Text("Ollama Model (e.g. glm-5.3-flash)", color = LightGrayMuted) },
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = AmberGold,
+                                        unfocusedBorderColor = BorderSubtle,
+                                        focusedTextColor = OffWhiteText,
+                                        unfocusedTextColor = OffWhiteText
+                                    ),
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth().testTag("ollama_model_field")
+                                )
+
+                                Spacer(Modifier.height(12.dp))
+
+                                OutlinedTextField(
+                                    value = ollamaApiKey,
+                                    onValueChange = { ollamaApiKey = it; settings.ollamaApiKey = it },
+                                    label = { Text("Ollama API Key (only for Ollama Cloud)", color = LightGrayMuted) },
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = AmberGold,
+                                        unfocusedBorderColor = BorderSubtle,
+                                        focusedTextColor = OffWhiteText,
+                                        unfocusedTextColor = OffWhiteText
+                                    ),
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth().testTag("ollama_api_key_field")
+                                )
+
+                                Spacer(Modifier.height(12.dp))
+
+                                OutlinedTextField(
+                                    value = jevBaseUrl,
+                                    onValueChange = { jevBaseUrl = it; settings.jevBaseUrl = it },
+                                    label = { Text("Jev / TypeSafe Base URL", color = LightGrayMuted) },
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = AmberGold,
+                                        unfocusedBorderColor = BorderSubtle,
+                                        focusedTextColor = OffWhiteText,
+                                        unfocusedTextColor = OffWhiteText
+                                    ),
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth().testTag("jev_base_url_field")
+                                )
+
+                                Spacer(Modifier.height(12.dp))
+
+                                OutlinedTextField(
+                                    value = jevModel,
+                                    onValueChange = { jevModel = it; settings.jevModel = it },
+                                    label = { Text("Jev Model (typesafe-ai/jev)", color = LightGrayMuted) },
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = AmberGold,
+                                        unfocusedBorderColor = BorderSubtle,
+                                        focusedTextColor = OffWhiteText,
+                                        unfocusedTextColor = OffWhiteText
+                                    ),
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth().testTag("jev_model_field")
+                                )
+
+                                Spacer(Modifier.height(12.dp))
+
+                                OutlinedTextField(
+                                    value = jevApiKey,
+                                    onValueChange = { jevApiKey = it; settings.jevApiKey = it },
+                                    label = { Text("Jev API Key (AI_GATEWAY_API_KEY)", color = LightGrayMuted) },
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = AmberGold,
+                                        unfocusedBorderColor = BorderSubtle,
+                                        focusedTextColor = OffWhiteText,
+                                        unfocusedTextColor = OffWhiteText
+                                    ),
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth().testTag("jev_api_key_field")
+                                )
+
+                                Spacer(Modifier.height(12.dp))
+
+                                OutlinedTextField(
+                                    value = jevLocalUrl,
+                                    onValueChange = { jevLocalUrl = it; settings.jevLocalUrl = it },
+                                    label = { Text("Local Jev URL (e.g. http://10.0.2.2:8080)", color = LightGrayMuted) },
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = AmberGold,
+                                        unfocusedBorderColor = BorderSubtle,
+                                        focusedTextColor = OffWhiteText,
+                                        unfocusedTextColor = OffWhiteText
+                                    ),
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth().testTag("jev_local_url_field")
+                                )
+
+                                Spacer(Modifier.height(14.dp))
+                                HorizontalDivider(color = BorderSubtle, thickness = 1.dp)
+                                Spacer(Modifier.height(14.dp))
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "Auto-apply reworded passages",
+                                            color = OffWhiteText,
+                                            fontWeight = FontWeight.SemiBold,
+                                            fontSize = 15.sp
+                                        )
+                                        Text(
+                                            text = "Skip the save/keep confirmation when Jev rates the rewrite faithful.",
+                                            color = LightGrayMuted,
+                                            fontSize = 12.sp
+                                        )
+                                    }
+                                    Spacer(Modifier.width(10.dp))
+                                    Switch(
+                                        checked = autoApplyReword,
+                                        onCheckedChange = {
+                                            autoApplyReword = it
+                                            settings.autoApplyReword = it
+                                        },
+                                        colors = SwitchDefaults.colors(
+                                            checkedThumbColor = AmberGold,
+                                            checkedTrackColor = AmberGold.copy(alpha = 0.4f),
+                                            uncheckedThumbColor = LightGrayMuted,
+                                            uncheckedTrackColor = MidnightCard
+                                        ),
+                                        modifier = Modifier.testTag("auto_apply_reword_switch")
+                                    )
+                                }
                             }
                         }
 
@@ -1203,6 +1440,46 @@ fun CaregiverScreen(
                                         }
                                     }
                                 }
+
+                                Spacer(Modifier.height(14.dp))
+                                HorizontalDivider(color = BorderSubtle, thickness = 1.dp)
+                                Spacer(Modifier.height(14.dp))
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "Keep Microphone Always Listening",
+                                            color = OffWhiteText,
+                                            fontWeight = FontWeight.SemiBold,
+                                            fontSize = 15.sp
+                                        )
+                                        Text(
+                                            text = "Off (recommended): the mic sleeps when quiet and wakes on the volume key. On: listens continuously.",
+                                            color = LightGrayMuted,
+                                            fontSize = 12.sp
+                                        )
+                                    }
+                                    Spacer(Modifier.width(10.dp))
+                                    Switch(
+                                        checked = alwaysListening,
+                                        onCheckedChange = {
+                                            alwaysListening = it
+                                            settings.alwaysListening = it
+                                            if (it) controller.wakeListening() else controller.pauseListening()
+                                        },
+                                        colors = SwitchDefaults.colors(
+                                            checkedThumbColor = AmberGold,
+                                            checkedTrackColor = AmberGold.copy(alpha = 0.4f),
+                                            uncheckedThumbColor = LightGrayMuted,
+                                            uncheckedTrackColor = MidnightCard
+                                        ),
+                                        modifier = Modifier.testTag("always_listening_switch")
+                                    )
+                                }
                             }
                         }
 
@@ -1222,7 +1499,7 @@ fun CaregiverScreen(
                                 (mem.charactersAndPerspectives?.contains(searchQuery, ignoreCase = true) == true) ||
                                 (mem.sensoryDetails?.contains(searchQuery, ignoreCase = true) == true)
                             val matchesChapter = selectedChapterFilter == "All Chapters" ||
-                                (mem.chapter ?: "Chapter 1: Early Days") == selectedChapterFilter
+                                (mem.chapter ?: BookChapters.DEFAULT_CHAPTER) == selectedChapterFilter
                             matchesSearch && matchesChapter
                         }
                     }
@@ -1476,7 +1753,7 @@ fun CaregiverScreen(
                                                         onClick = {
                                                             memoryToEdit = memory
                                                             editedTranscript = memory.transcript
-                                                            editedChapter = memory.chapter ?: "Chapter 1: Early Days"
+                                                            editedChapter = memory.chapter ?: BookChapters.DEFAULT_CHAPTER
                                                             showEditDialog = true
                                                         },
                                                         modifier = Modifier.size(32.dp)
@@ -2260,7 +2537,7 @@ fun CaregiverScreen(
                                 }
                                 Spacer(Modifier.height(10.dp))
                                 Text(
-                                    text = "Mike Write stores voice transcripts and book chapters directly in an on-device SQLite (Room) database. Audio stream buffers are processed in real-time for speech-to-text dictation and are never sold or used for ad profiling.",
+                                    text = "Mike Write stores your transcripts and book chapters directly in an on-device SQLite (Room) database. The app itself does not save audio recordings; speech-to-text is performed by your device's speech recognition service, which may transmit audio to that provider (e.g. Google) for transcription. Story text is never sold or used for ad profiling.",
                                     color = LightGrayMuted,
                                     fontSize = 13.sp,
                                     lineHeight = 19.sp
@@ -2276,7 +2553,7 @@ fun CaregiverScreen(
                                 )
                                 Spacer(Modifier.height(6.dp))
                                 Text(
-                                    text = "• Personal Info (Audio / Voice recordings): Disclose for 'App functionality' (voice dictation & assistive book authoring).\n• Health / Memoir content: Ephemeral capture; all drafts remain under author control.\n• Encryption in transit: All cloud AI follow-up calls utilize standard TLS encryption.",
+                                    text = "• Personal Info (Audio / Voice): Disclose that speech is sent to the device speech-recognition provider for 'App functionality' (voice dictation).\n• Memoir / Health-adjacent content: Transcripts stay on device unless the author uses optional AI features, which send story text to Google Gemini.\n• Encryption: All network calls (speech and Gemini) use TLS in transit; this is not end-to-end encryption.",
                                     color = OffWhiteText,
                                     fontSize = 12.sp,
                                     lineHeight = 18.sp

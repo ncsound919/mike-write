@@ -9,11 +9,31 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import android.util.Log
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Non-visual earcon tone & haptic feedback engine for screen-free confidence and accessibility.
+ *
+ * Earcons are throttled per cue: an always-listening loop would otherwise fire
+ * the "not understood" NACK buzz on every quiet/misheard moment, which is
+ * fatiguing. Each cue has a minimum interval, and the whole engine can be muted.
  */
 class AudioHapticFeedback(private val context: Context) {
+
+    @Volatile
+    private var enabled: Boolean = true
+    private val lastCueAt = ConcurrentHashMap<Cue, Long>()
+
+    fun setEnabled(value: Boolean) {
+        enabled = value
+    }
+
+    private fun minIntervalMs(cue: Cue): Long = when (cue) {
+        Cue.NOT_UNDERSTOOD -> 8000L
+        Cue.HELP_TRIGGERED -> 2500L
+        Cue.BUTTON_TAP -> 400L
+        else -> 1200L
+    }
 
     private val vibrator: Vibrator? by lazy {
         try {
@@ -34,7 +54,7 @@ class AudioHapticFeedback(private val context: Context) {
 
     init {
         try {
-            toneGenerator = ToneGenerator(AudioManager.STREAM_MUSIC, 85)
+            toneGenerator = ToneGenerator(AudioManager.STREAM_MUSIC, 55)
         } catch (e: Exception) {
             Log.e("AudioHapticFeedback", "Error creating ToneGenerator", e)
         }
@@ -51,6 +71,11 @@ class AudioHapticFeedback(private val context: Context) {
     }
 
     fun playFeedback(cue: Cue) {
+        if (!enabled) return
+        val now = System.currentTimeMillis()
+        val last = lastCueAt[cue] ?: 0L
+        if (now - last < minIntervalMs(cue)) return
+        lastCueAt[cue] = now
         try {
             when (cue) {
                 Cue.START_RECORDING -> {

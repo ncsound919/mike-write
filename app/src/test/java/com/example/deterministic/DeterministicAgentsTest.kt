@@ -14,23 +14,33 @@ class DeterministicAgentsTest {
         val cleaned = CleanerAgent.clean(raw)
         assertFalse(cleaned.contains("Um"))
         assertFalse(cleaned.contains("you know"))
-        assertFalse(cleaned.contains("actually"))
-        assertFalse(cleaned.contains("basically"))
         assertTrue(cleaned.contains("I went to the store"))
+        // Meaningful words are NOT disfluencies and must survive verbatim.
+        assertTrue(cleaned.contains("like"))
+        assertTrue(cleaned.contains("actually"))
+        assertTrue(cleaned.contains("basically"))
 
         // Blank check
         assertEquals("", CleanerAgent.clean("   "))
 
-        // Repeated word deduplication
+        // Repeated word deduplication (STT stutter artifacts)
         val repeated = "We went went down to the the river."
         val deduped = CleanerAgent.clean(repeated)
         assertFalse(deduped.contains("went went"))
         assertFalse(deduped.contains("the the"))
 
+        // Legitimate English repeats must never be collapsed.
+        val legitRepeat = CleanerAgent.clean("I had had enough of that that year")
+        assertTrue(legitRepeat.contains("had had"))
+        assertTrue(legitRepeat.contains("that that"))
+
         // Trailing connectives
         val trailing = "We had a wonderful picnic and"
         val cleanTrailing = CleanerAgent.clean(trailing)
         assertFalse(cleanTrailing.endsWith("and"))
+
+        // Fact-preservation invariant still holds.
+        assertTrue(CleanerAgent.isSubsequenceOfRaw(raw, cleaned))
     }
 
     // -------------------------------------------------------------

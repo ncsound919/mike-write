@@ -1,5 +1,6 @@
 package com.example.deterministic
 
+import com.example.data.BookChapters
 import com.example.data.Memory
 
 data class AssembledChapter(
@@ -16,14 +17,7 @@ data class AssembledChapter(
  */
 object ChapterAssemblerAgent {
 
-    private val STANDARD_CHAPTER_ORDER = listOf(
-        "Chapter 1: Early Days",
-        "Chapter 2: Growing Up & Family",
-        "Chapter 3: Passions & Milestones",
-        "Chapter 4: The Turning Point",
-        "Chapter 5: Strength, Healing & Daily Life",
-        "Chapter 6: Wisdom & Legacy"
-    )
+    private val STANDARD_CHAPTER_ORDER = BookChapters.STANDARD
 
     /**
      * Determines the optimal chapter for a memory deterministically based on topic and content.

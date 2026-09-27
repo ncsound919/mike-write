@@ -316,7 +316,8 @@ fun ExportChapterDialog(
                                         bookTitle = bookTitle,
                                         authorName = authorName,
                                         chapterTitle = if (selectedChapter == "All Chapters") null else selectedChapter,
-                                        memories = filteredMemories
+                                        memories = filteredMemories,
+                                        includeLiteraryDetails = includeLiteraryNotes
                                     )
 
                                     isExporting = false
@@ -357,7 +358,8 @@ fun ExportChapterDialog(
                                         bookTitle = bookTitle,
                                         authorName = authorName,
                                         chapterTitle = if (selectedChapter == "All Chapters") null else selectedChapter,
-                                        memories = filteredMemories
+                                        memories = filteredMemories,
+                                        includeLiteraryDetails = includeLiteraryNotes
                                     )
 
                                     isExporting = false

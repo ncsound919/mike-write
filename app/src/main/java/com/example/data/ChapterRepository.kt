@@ -27,44 +27,34 @@ class ChapterRepository(private val chapterDao: ChapterDao) {
 
     suspend fun ensureDefaultChaptersExist() {
         if (chapterDao.countChapters() == 0) {
-            val defaultChapters = listOf(
-                ChapterEntity(
-                    title = "Prologue: Introduction",
-                    description = "Opening reflections and author introduction.",
-                    orderIndex = 0,
-                    targetWordCount = 1000
-                ),
-                ChapterEntity(
-                    title = "Chapter 1: Early Days",
-                    description = "Childhood memories, family roots, and early influences.",
-                    orderIndex = 1,
-                    targetWordCount = 2000
-                ),
-                ChapterEntity(
-                    title = "Chapter 2: Heritage & Family",
-                    description = "Family traditions, key relatives, and ancestral stories.",
-                    orderIndex = 2,
-                    targetWordCount = 2000
-                ),
-                ChapterEntity(
-                    title = "Chapter 3: Passion & Milestones",
-                    description = "Career beginnings, passions, marriage, and personal achievements.",
-                    orderIndex = 3,
-                    targetWordCount = 2500
-                ),
-                ChapterEntity(
-                    title = "Chapter 4: The Turning Point",
-                    description = "Life pivot points, overcoming adversity, and personal strength.",
-                    orderIndex = 4,
-                    targetWordCount = 2000
-                ),
-                ChapterEntity(
-                    title = "Chapter 5: Wisdom & Legacy",
-                    description = "Life lessons, gratitude, and words for future generations.",
-                    orderIndex = 5,
-                    targetWordCount = 1500
-                )
+            val descriptions = mapOf(
+                "Chapter 1: Early Days" to "Childhood memories, family roots, and early influences.",
+                "Chapter 2: Growing Up & Family" to "Family traditions, key relatives, and growing-up stories.",
+                "Chapter 3: Passions & Milestones" to "Career beginnings, passions, marriage, and personal achievements.",
+                "Chapter 4: The Turning Point" to "Life pivot points, overcoming adversity, and personal strength.",
+                "Chapter 5: Strength, Healing & Daily Life" to "Recovery, resilience, caregiving, and the texture of daily life.",
+                "Chapter 6: Wisdom & Legacy" to "Life lessons, gratitude, and words for future generations."
             )
+            val defaultChapters = buildList {
+                add(
+                    ChapterEntity(
+                        title = BookChapters.PROLOGUE,
+                        description = "Opening reflections and author introduction.",
+                        orderIndex = 0,
+                        targetWordCount = 1000
+                    )
+                )
+                BookChapters.STANDARD.forEachIndexed { index, title ->
+                    add(
+                        ChapterEntity(
+                            title = title,
+                            description = descriptions[title].orEmpty(),
+                            orderIndex = index + 1,
+                            targetWordCount = 2000
+                        )
+                    )
+                }
+            }
             chapterDao.insertChapters(defaultChapters)
         }
     }

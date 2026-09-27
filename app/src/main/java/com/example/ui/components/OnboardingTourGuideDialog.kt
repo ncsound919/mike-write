@@ -101,8 +101,8 @@ fun OnboardingTourGuideDialog(
                     ),
                     TourBullet(
                         icon = Icons.Default.OfflineBolt,
-                        headline = "100% Offline & Private",
-                        description = "Everything runs securely on your device with local Room database persistence and optional Gemini AI enhancements."
+                        headline = "Private by Default",
+                        description = "Your drafts are stored in an on-device database. Speech-to-text and the optional AI features use your device's speech service and Google Gemini, so they need a connection."
                     )
                 )
             ),
@@ -158,8 +158,8 @@ fun OnboardingTourGuideDialog(
                 bullets = listOf(
                     TourBullet(
                         icon = Icons.Default.MicNone,
-                        headline = "Voice Loop (Always Listening)",
-                        description = "Zero physical touch required. Uses wake commands and continuous conversational turn-taking.",
+                        headline = "Voice Loop (Wake on Volume Key)",
+                        description = "The mic sleeps when you go quiet (no repeated chimes). Press the volume key or switch to speak a command, or tap the orb to dictate.",
                         tagColor = EmeraldVoice
                     ),
                     TourBullet(
@@ -221,7 +221,7 @@ fun OnboardingTourGuideDialog(
                 totalSteps = 5,
                 badge = "STUDIO & PUBLISHING",
                 title = "Export, Audiobooks & Caregiver Hub",
-                subtitle = "Share your finished memoir with your family or export to PDF, Text, and Audio formats.",
+                subtitle = "Share your finished memoir with your family or export to PDF, Text, and Markdown formats.",
                 icon = Icons.Default.WorkspacePremium,
                 iconColor = AmberGold,
                 spokenNarration = "Step 5: Studio and Publishing. Open the Studio button at any time to organize chapters, export print-ready manuscripts, generate audiobooks, or adjust senior font sizes. You are now ready to begin writing!",

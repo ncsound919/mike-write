@@ -20,14 +20,7 @@ data class BookReadinessReport(
 
 object BookReadinessEvaluator {
 
-    val STANDARD_CHAPTERS = listOf(
-        "Chapter 1: Early Days",
-        "Chapter 2: Growing Up & Family",
-        "Chapter 3: Passions & Milestones",
-        "Chapter 4: The Turning Point",
-        "Chapter 5: Strength, Healing & Daily Life",
-        "Chapter 6: Wisdom & Legacy"
-    )
+    val STANDARD_CHAPTERS = BookChapters.STANDARD
 
     fun evaluate(
         bookTitle: String,
@@ -37,7 +30,7 @@ object BookReadinessEvaluator {
         memories: List<Memory>
     ): BookReadinessReport {
         val totalWords = memories.sumOf { it.transcript.split(Regex("\\s+")).filter { w -> w.isNotBlank() }.size }
-        val groupedChapters = memories.groupBy { it.chapter ?: "Chapter 1: Early Days" }
+        val groupedChapters = memories.groupBy { it.chapter ?: BookChapters.DEFAULT_CHAPTER }
         val chaptersWithContent = STANDARD_CHAPTERS.count { groupedChapters.containsKey(it) && (groupedChapters[it]?.isNotEmpty() == true) }
 
         val hasSensoryAnchors = memories.any { !it.sensoryDetails.isNullOrBlank() }

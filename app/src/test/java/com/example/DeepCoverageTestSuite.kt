@@ -13,8 +13,11 @@ import com.example.feedback.AudioHapticFeedback
 import com.example.loop.AccessibilitySwitchAction
 import com.example.loop.LoopState
 import com.example.loop.VoiceLoopBus
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
@@ -77,8 +80,17 @@ class DeepCoverageTestSuite {
         assertTrue(logs.size <= 52)
         assertTrue(logs.last().contains("#70"))
 
-        VoiceLoopBus.triggerSwitchAction(AccessibilitySwitchAction.TOGGLE_RECORD_OR_CONFIRM)
-        val action = VoiceLoopBus.switchActions.first()
+        // Subscribe before emitting: switchActions is a replay-0 SharedFlow, so a
+        // collector started after tryEmit would suspend forever. UNDISPATCHED starts
+        // the collector synchronously up to its first suspension (the subscription),
+        // and withTimeout guarantees the test fails instead of hanging.
+        val action = withTimeout(5_000) {
+            val next = async(start = CoroutineStart.UNDISPATCHED) {
+                VoiceLoopBus.switchActions.first()
+            }
+            VoiceLoopBus.triggerSwitchAction(AccessibilitySwitchAction.TOGGLE_RECORD_OR_CONFIRM)
+            next.await()
+        }
         assertEquals(AccessibilitySwitchAction.TOGGLE_RECORD_OR_CONFIRM, action)
     }
 

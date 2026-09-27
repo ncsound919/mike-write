@@ -136,5 +136,20 @@ class MemoirExportTest {
         )
         assertNotNull(shareResult)
         assertEquals("application/pdf", shareResult.mimeType)
+        // The artifact is written to cache/exports before FileProvider URI resolution.
+        val shareFile = java.io.File(java.io.File(context.cacheDir, "exports"), "share_test.pdf")
+        assertTrue("Export file was not written", shareFile.exists() && shareFile.length() > 0)
+        // androidx FileProvider.belongsToRoot() hardcodes '/' so it cannot match Windows
+        // '\' paths under Robolectric; the share URI is verified on POSIX hosts only.
+        if (shareResult.success) {
+            assertNotNull(shareResult.uri)
+        } else if (java.io.File.separatorChar == '/') {
+            fail("createShareableFile failed on a POSIX host: ${shareResult.message}")
+        } else {
+            org.junit.Assume.assumeTrue(
+                "Skipped on Windows: androidx FileProvider cannot match '\\' paths (${shareResult.message})",
+                false
+            )
+        }
     }
 }
