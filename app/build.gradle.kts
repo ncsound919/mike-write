@@ -49,7 +49,7 @@ android {
     }
     debug {
       signingConfig = signingConfigs.getByName("debugConfig")
-      enableUnitTestCoverage = true
+      // enableUnitTestCoverage = true
     }
   }
   compileOptions {
