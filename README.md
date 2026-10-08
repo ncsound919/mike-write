@@ -61,7 +61,7 @@ AI features are entirely optional.
    ```
    GEMINI_API_KEY=MY_GEMINI_API_KEY   # optional primary
    OLLAMA_BASE_URL=http://10.0.2.2:11434/v1   # fallback text server (Ollama native OR OpenAI-compatible)
-   OLLAMA_MODEL=minicpm5-fable
+   OLLAMA_MODEL=qwen3.5-2b
    OLLAMA_API_KEY=MY_OLLAMA_API_KEY   # only needed for Ollama Cloud
    AI_GATEWAY_API_KEY=vck_...         # Jev tier 1 (Vercel AI Gateway)
    TYPESAFE_BASE_URL=https://ai-gateway.vercel.sh/typesafe
@@ -78,7 +78,7 @@ AI features are entirely optional.
 ### Host addressing (important)
 
 Both local services currently bind to `127.0.0.1` on the build machine:
-- `:11434` — llama.cpp OpenAI-compatible server (`/v1`), model `minicpm5-fable`.
+- `:11434` — llama.cpp OpenAI-compatible server (`/v1`), model `qwen3.5-2b`.
 - `:8080` — LocalJev (`/v1/systemone`, no key), model `localjev-0.2`.
 
 **Physical phone over USB (current setup):** reverse the ports so the phone's loopback
